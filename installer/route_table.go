@@ -48,12 +48,11 @@ func (r *RouteTable) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	output.CreateVar(r)
 	if routeTableId == "" {
 		glog.V(2).Info("Route table not found; will create")
-		output.AddEC2Command("create-route-table", "--query", "RouteTable.RouteTableId").AssignTo(r)
+		output.AddEC2Command("create-route-table", "--vpc-id", output.ReadVar(r.Subnet.VPC), "--query", "RouteTable.RouteTableId").AssignTo(r)
 		output.AddEC2Command("associate-route-table", "--route-table-id", output.ReadVar(r), "--subnet-id", output.ReadVar(r.Subnet))
 	} else {
 		output.AddAssignment(r, routeTableId)
 	}
 
-	output.AddAWSTags(r, cloud.MissingTags(routeTableId, "route-table"))
-	return nil
+	return output.AddAWSTags(cloud, r, "route-table")
 }

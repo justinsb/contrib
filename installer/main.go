@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -98,8 +101,7 @@ func (v *VPC) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		output.AddEC2Command("modify-vpc-attribute", "--vpc-id", output.ReadVar(v), "--enable-dns-hostnames", "'{\"Value\": true}'")
 	}
 
-	output.AddAWSTags(v, cloud.MissingTags(vpcId, "vpc"))
-	return nil
+	return output.AddAWSTags(cloud, v, "vpc")
 }
 
 type Subnet struct {
@@ -145,20 +147,7 @@ func (s *Subnet) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		output.AddAssignment(s, subnetId)
 	}
 
-	output.AddAWSTags(s, cloud.MissingTags(subnetId, "subnet"))
-	return nil
-}
-
-type SecurityGroup struct {
-	name string
-}
-
-type SecurityGroupIngress struct {
-	securityGroup *SecurityGroup
-	cidr          string
-	protocol      string
-	port          string
-	sourceGroup   *SecurityGroup
+	return output.AddAWSTags(cloud, s, "subnet")
 }
 
 type PersistentVolume struct {
@@ -186,13 +175,15 @@ type AutoScalingGroup struct {
 }
 
 type AWSCloud struct {
-	ec2  *ec2.EC2
-	tags map[string]string
+	region string
+	ec2    *ec2.EC2
+	tags   map[string]string
 }
 
-func NewAWSCloud(tags map[string]string) *AWSCloud {
-	c := &AWSCloud{}
-	c.ec2 = ec2.New(nil)
+func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
+	c := &AWSCloud{region: region}
+	config := aws.NewConfig().WithRegion(region)
+	c.ec2 = ec2.New(config)
 	c.tags = tags
 	return c
 }
@@ -213,9 +204,6 @@ func (c *AWSCloud) Tags() map[string]string {
 
 func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]string, error) {
 	tags := map[string]string{}
-	if resourceId == "" {
-		return nil, nil
-	}
 
 	request := &ec2.DescribeTagsInput{
 		Filters: []*ec2.Filter{
@@ -240,26 +228,6 @@ func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]s
 	return tags, nil
 }
 
-func (c *AWSCloud) MissingTags(resourceId string, resourceType string) map[string]string {
-	actual, err := c.GetTags(resourceId, resourceType)
-	if err != nil {
-		glog.Fatal("unexpected error fetching tags for resource: %v", err)
-	}
-	if actual == nil {
-		actual = map[string]string{}
-	}
-
-	missing := map[string]string{}
-	for k, v := range c.tags {
-		actualValue, found := actual[k]
-		if found && actualValue == v {
-			continue
-		}
-		missing[k] = v
-	}
-	return missing
-}
-
 func (c *AWSCloud) BuildFilters() []*ec2.Filter {
 	filters := []*ec2.Filter{}
 	for name, value := range c.tags {
@@ -269,7 +237,15 @@ func (c *AWSCloud) BuildFilters() []*ec2.Filter {
 	return filters
 }
 
+func (c *AWSCloud) EnvVars() map[string]string {
+	env := map[string]string{}
+	env["AWS_DEFAULT_REGION"] = c.region
+	env["AWS_DEFAULT_OUTPUT"] = "text"
+	return env
+}
+
 type BashTarget struct {
+	cloud    *AWSCloud
 	commands []*BashCommand
 
 	ec2Args      []string
@@ -277,8 +253,8 @@ type BashTarget struct {
 	prefixCounts map[string]int
 }
 
-func NewBashTarget() *BashTarget {
-	b := &BashTarget{}
+func NewBashTarget(cloud *AWSCloud) *BashTarget {
+	b := &BashTarget{cloud: cloud}
 	b.ec2Args = []string{"aws", "ec2"}
 	b.vars = make(map[HasId]*BashVar)
 	b.prefixCounts = make(map[string]int)
@@ -333,6 +309,31 @@ func (c *BashCommand) DebugDump() {
 	}
 }
 
+func (c *BashCommand) PrintShellCommand(w io.Writer) error {
+	var buf bytes.Buffer
+
+	if c.assignTo != nil {
+		buf.WriteString(c.assignTo.name)
+		buf.WriteString("=`")
+	}
+
+	for i, arg := range c.args {
+		if i != 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(arg)
+	}
+
+	if c.assignTo != nil {
+		buf.WriteString("`")
+	}
+
+	buf.WriteString("\n")
+
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 func (t *BashTarget) ReadVar(s HasId) string {
 	bv := t.vars[s]
 	if bv == nil {
@@ -349,6 +350,30 @@ func (t *BashTarget) DebugDump() {
 	}
 }
 
+func (t *BashTarget) PrintShellCommands(w io.Writer) error {
+	var header bytes.Buffer
+	header.WriteString("#!/bin/bash\n")
+	header.WriteString("set -ex\n\n")
+	header.WriteString(". ./helpers\n\n")
+
+	for k, v := range t.cloud.EnvVars() {
+		header.WriteString("export " + k + "=" + bashQuoteString(v) + "\n")
+	}
+
+	_, err := header.WriteTo(w)
+	if err != nil {
+		return err
+	}
+
+	for _, cmd := range t.commands {
+		err = cmd.PrintShellCommand(w)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (t *BashTarget) AddEC2Command(args ...string) *BashCommand {
 	cmd := &BashCommand{parent: t}
 	cmd.args = t.ec2Args
@@ -362,12 +387,35 @@ func bashQuoteString(s string) string {
 	return "\"" + s + "\""
 }
 
-func (t *BashTarget) AddAWSTags(s HasId, tags map[string]string) {
-	for name, value := range tags {
+func (t *BashTarget) AddAWSTags(cloud *AWSCloud, s HasId, resourceType string) error {
+	resourceId, exists := t.FindValue(s)
+	var missing map[string]string
+	if exists {
+		actual, err := cloud.GetTags(resourceId, resourceType)
+		if err != nil {
+			return fmt.Errorf("unexpected error fetchin tags for resource: %v", err)
+		}
+
+		expected := cloud.Tags()
+		missing := map[string]string{}
+		for k, v := range expected {
+			actualValue, found := actual[k]
+			if found && actualValue == v {
+				continue
+			}
+			missing[k] = v
+		}
+	} else {
+		missing = cloud.Tags()
+	}
+
+	for name, value := range missing {
 		cmd := &BashCommand{}
 		cmd.args = []string{"add-tag", t.ReadVar(s), bashQuoteString(name), bashQuoteString(value)}
 		t.AddCommand(cmd)
 	}
+
+	return nil
 }
 
 func (t *BashTarget) AddCommand(cmd *BashCommand) *BashCommand {
@@ -443,25 +491,54 @@ func main() {
 	var az string
 
 	flag.StringVar(&clusterId, "cluster-id", "", "cluster id")
-	flag.StringVar(&az, "az", "us-east-1a", "AWS availability zone")
+	flag.StringVar(&az, "az", "us-east-1b", "AWS availability zone")
 	flag.Parse()
 
 	if clusterId == "" {
 		glog.Fatal("cluster-id is required")
 	}
 
+	if len(az) <= 2 {
+		glog.Fatal("Invalid AZ: ", az)
+	}
+	region := az[:len(az)-1]
+
 	sshKey := &SSHKey{Name: "kubernetes-" + clusterId, PublicKeyPath: "~/.ssh/justin2015.pub"}
-	vpc := &VPC{CIDR: "127.20.0.0/16"}
-	subnet := &Subnet{VPC: vpc, AZ: az, CIDR: "127.20.0.0/24"}
+	vpc := &VPC{CIDR: "172.20.0.0/16"}
+	subnet := &Subnet{VPC: vpc, AZ: az, CIDR: "172.20.0.0/24"}
 	igw := &InternetGateway{VPC: vpc}
 	routeTable := &RouteTable{Subnet: subnet}
 	route := &Route{RouteTable: routeTable, CIDR: "0.0.0.0/0", InternetGateway: igw}
-	resources := []BashRenderable{sshKey, vpc, subnet, igw, routeTable, route}
+	masterSG := &SecurityGroup{
+		Name:        "kubernetes-master-" + clusterId,
+		Description: "Security group for master nodes",
+		VPC:         vpc}
+	minionSG := &SecurityGroup{
+		Name:        "kubernetes-minion-" + clusterId,
+		Description: "Security group for minion nodes",
+		VPC:         vpc}
 
-	target := NewBashTarget()
+	resources := []BashRenderable{sshKey, vpc, subnet, igw,
+		routeTable, route,
+		masterSG, minionSG,
+	}
+
+	resources = append(resources, masterSG.AllowFrom(masterSG))
+	resources = append(resources, masterSG.AllowFrom(minionSG))
+	resources = append(resources, minionSG.AllowFrom(masterSG))
+	resources = append(resources, minionSG.AllowFrom(minionSG))
+
+	// SSH is open to the world
+	resources = append(resources, minionSG.AllowTCP("0.0.0.0/0", 22, 22))
+	resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 22, 22))
+
+	// HTTPS to the master is allowed (for API access)
+	resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 443, 443))
 
 	tags := map[string]string{"KubernetesCluster": clusterId}
-	cloud := NewAWSCloud(tags)
+	cloud := NewAWSCloud(region, tags)
+
+	target := NewBashTarget(cloud)
 
 	glog.Info("Starting")
 	for _, resource := range resources {
@@ -473,4 +550,9 @@ func main() {
 	}
 
 	target.DebugDump()
+
+	err := target.PrintShellCommands(os.Stdout)
+	if err != nil {
+		glog.Fatal("error building shell commands: %v", err)
+	}
 }

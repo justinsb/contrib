@@ -1,0 +1,17 @@
+# Adds a tag to an AWS resource
+# usage: add-tag <resource-id> <tag-name> <tag-value>
+function add-tag {
+  echo "Adding tag to ${1}: ${2}=${3}"
+
+  # We need to retry in case the resource isn't yet fully created
+  n=0
+  until [ $n -ge 25 ]; do
+    aws ec2 create-tags --resources ${1} --tags Key=${2},Value=${3} && return
+    n=$[$n+1]
+    sleep 3
+  done
+
+  echo "Unable to add tag to AWS resource"
+  exit 1
+}
+

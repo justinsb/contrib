@@ -54,6 +54,5 @@ func (g *InternetGateway) RenderBash(cloud *AWSCloud, output *BashTarget) error 
 		output.AddAssignment(g, igwId)
 	}
 
-	output.AddAWSTags(g, cloud.MissingTags(igwId, "internet-gateway"))
-	return nil
+	return output.AddAWSTags(cloud, g, "internet-gateway")
 }
