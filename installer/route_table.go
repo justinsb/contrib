@@ -54,5 +54,5 @@ func (r *RouteTable) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		output.AddAssignment(r, routeTableId)
 	}
 
-	return output.AddAWSTags(cloud, r, "route-table")
+	return output.AddAWSTags(cloud.Tags(), r, "route-table")
 }

@@ -5,13 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
 )
 
@@ -101,7 +104,7 @@ func (v *VPC) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		output.AddEC2Command("modify-vpc-attribute", "--vpc-id", output.ReadVar(v), "--enable-dns-hostnames", "'{\"Value\": true}'")
 	}
 
-	return output.AddAWSTags(cloud, v, "vpc")
+	return output.AddAWSTags(cloud.Tags(), v, "vpc")
 }
 
 type Subnet struct {
@@ -147,12 +150,7 @@ func (s *Subnet) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		output.AddAssignment(s, subnetId)
 	}
 
-	return output.AddAWSTags(cloud, s, "subnet")
-}
-
-type PersistentVolume struct {
-	name   string
-	sizeGB int
+	return output.AddAWSTags(cloud.Tags(), s, "subnet")
 }
 
 type ASGLaunchConfiguration struct {
@@ -176,6 +174,7 @@ type AutoScalingGroup struct {
 
 type AWSCloud struct {
 	region string
+	iam    *iam.IAM
 	ec2    *ec2.EC2
 	tags   map[string]string
 }
@@ -184,6 +183,7 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	c := &AWSCloud{region: region}
 	config := aws.NewConfig().WithRegion(region)
 	c.ec2 = ec2.New(config)
+	c.iam = iam.New(config)
 	c.tags = tags
 	return c
 }
@@ -199,7 +199,12 @@ func newEc2Filter(name string, value string) *ec2.Filter {
 }
 
 func (c *AWSCloud) Tags() map[string]string {
-	return c.tags
+	// Defensive copy
+	tags := make(map[string]string)
+	for k, v := range c.tags {
+		tags[k] = v
+	}
+	return tags
 }
 
 func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]string, error) {
@@ -249,6 +254,7 @@ type BashTarget struct {
 	commands []*BashCommand
 
 	ec2Args      []string
+	iamArgs      []string
 	vars         map[HasId]*BashVar
 	prefixCounts map[string]int
 }
@@ -256,6 +262,7 @@ type BashTarget struct {
 func NewBashTarget(cloud *AWSCloud) *BashTarget {
 	b := &BashTarget{cloud: cloud}
 	b.ec2Args = []string{"aws", "ec2"}
+	b.iamArgs = []string{"aws", "iam"}
 	b.vars = make(map[HasId]*BashVar)
 	b.prefixCounts = make(map[string]int)
 	return b
@@ -382,21 +389,28 @@ func (t *BashTarget) AddEC2Command(args ...string) *BashCommand {
 	return t.AddCommand(cmd)
 }
 
+func (t *BashTarget) AddIAMCommand(args ...string) *BashCommand {
+	cmd := &BashCommand{parent: t}
+	cmd.args = t.iamArgs
+	cmd.args = append(cmd.args, args...)
+
+	return t.AddCommand(cmd)
+}
+
 func bashQuoteString(s string) string {
 	// TODO: Escaping
 	return "\"" + s + "\""
 }
 
-func (t *BashTarget) AddAWSTags(cloud *AWSCloud, s HasId, resourceType string) error {
+func (t *BashTarget) AddAWSTags(expected map[string]string, s HasId, resourceType string) error {
 	resourceId, exists := t.FindValue(s)
 	var missing map[string]string
 	if exists {
-		actual, err := cloud.GetTags(resourceId, resourceType)
+		actual, err := t.cloud.GetTags(resourceId, resourceType)
 		if err != nil {
 			return fmt.Errorf("unexpected error fetchin tags for resource: %v", err)
 		}
 
-		expected := cloud.Tags()
 		missing := map[string]string{}
 		for k, v := range expected {
 			actualValue, found := actual[k]
@@ -406,7 +420,7 @@ func (t *BashTarget) AddAWSTags(cloud *AWSCloud, s HasId, resourceType string) e
 			missing[k] = v
 		}
 	} else {
-		missing = cloud.Tags()
+		missing = expected
 	}
 
 	for name, value := range missing {
@@ -450,8 +464,14 @@ func (t *BashTarget) FindValue(h HasId) (string, bool) {
 	return *bv.staticValue, true
 }
 
-func (t *BashTarget) AddResource(path string) string {
-	return "file://" + path
+func (t *BashTarget) AddResource(resource Resource) string {
+	switch r := resource.(type) {
+	default:
+		log.Fatal("unknown resource type: ", r)
+		return ""
+	case FileResource:
+		return "file://" + r.Path
+	}
 }
 
 func (k *SSHKey) RenderBash(cloud *AWSCloud, output *BashTarget) error {
@@ -486,41 +506,112 @@ func (k *SSHKey) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	return nil
 }
 
-func main() {
-	var clusterId string
-	var az string
+var basePath string
 
-	flag.StringVar(&clusterId, "cluster-id", "", "cluster id")
-	flag.StringVar(&az, "az", "us-east-1b", "AWS availability zone")
+func staticResource(key string) Resource {
+	p := path.Join(basePath, key)
+	return &FileResource{Path: p}
+}
+
+func main() {
+	var configuration Configuration
+	var clusterID string
+	var masterVolumeSize int
+	var volumeType string
+
+	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
+
+	flag.StringVar(&clusterID, "cluster-id", "", "cluster id")
+	flag.StringVar(&configuration.Zone, "az", "us-east-1b", "AWS availability zone")
+	flag.StringVar(&volumeType, "volume-type", "gp2", "Type for EBS volumes")
+	flag.IntVar(&masterVolumeSize, "master-volume-size", 20, "Size for master volume")
+
 	flag.Parse()
 
-	if clusterId == "" {
+	if clusterID == "" {
 		glog.Fatal("cluster-id is required")
 	}
 
+	az := configuration.Zone
 	if len(az) <= 2 {
 		glog.Fatal("Invalid AZ: ", az)
 	}
 	region := az[:len(az)-1]
 
-	sshKey := &SSHKey{Name: "kubernetes-" + clusterId, PublicKeyPath: "~/.ssh/justin2015.pub"}
+	iamMasterRole := &IAMRole{
+		Name:               "kubernetes-master",
+		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-role.json"),
+	}
+	iamMasterRolePolicy := &IAMRolePolicy{
+		Role:           iamMasterRole,
+		Name:           "kubernetes-master",
+		PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-policy.json"),
+	}
+	iamMasterInstanceProfile := &IAMInstanceProfile{
+		Name: "kubernetes-master",
+		Role: iamMasterRole,
+	}
+
+	iamMinionRole := &IAMRole{
+		Name:               "kubernetes-minion",
+		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-role.json"),
+	}
+	iamMinionRolePolicy := &IAMRolePolicy{
+		Role:           iamMinionRole,
+		Name:           "kubernetes-minion",
+		PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-policy.json"),
+	}
+	iamMinionInstanceProfile := &IAMInstanceProfile{
+		Name: "kubernetes-minion",
+		Role: iamMinionRole,
+	}
+
+	sshKey := &SSHKey{Name: "kubernetes-" + clusterID, PublicKeyPath: "~/.ssh/justin2015.pub"}
 	vpc := &VPC{CIDR: "172.20.0.0/16"}
 	subnet := &Subnet{VPC: vpc, AZ: az, CIDR: "172.20.0.0/24"}
 	igw := &InternetGateway{VPC: vpc}
 	routeTable := &RouteTable{Subnet: subnet}
 	route := &Route{RouteTable: routeTable, CIDR: "0.0.0.0/0", InternetGateway: igw}
 	masterSG := &SecurityGroup{
-		Name:        "kubernetes-master-" + clusterId,
+		Name:        "kubernetes-master-" + clusterID,
 		Description: "Security group for master nodes",
 		VPC:         vpc}
 	minionSG := &SecurityGroup{
-		Name:        "kubernetes-minion-" + clusterId,
+		Name:        "kubernetes-minion-" + clusterID,
 		Description: "Security group for minion nodes",
 		VPC:         vpc}
 
-	resources := []BashRenderable{sshKey, vpc, subnet, igw,
+	masterPV := &PersistentVolume{
+		AZ:         az,
+		Size:       masterVolumeSize,
+		VolumeType: volumeType,
+		NameTag:    clusterID + "-master-pd",
+	}
+
+	masterInstance := &Instance{
+		NameTag:            clusterID + "-master",
+		Subnet:             subnet,
+		SSHKey:             sshKey,
+		SecurityGroups:     []*SecurityGroup{masterSG},
+		IAMInstanceProfile: iamMasterInstanceProfile,
+		/*ImageID             string
+		  InstanceType        string
+		  PrivateIPAddress    string
+		  AssociatePublicIP   bool
+		  BlockDeviceMappings []ec2.BlockDeviceMapping
+		  UserData            Resource
+		  IAMInstanceProfile  *IAMInstanceProfile
+		*/
+	}
+
+	resources := []BashRenderable{
+		iamMasterRole, iamMasterRolePolicy, iamMasterInstanceProfile,
+		iamMinionRole, iamMinionRolePolicy, iamMinionInstanceProfile,
+		sshKey, vpc, subnet, igw,
 		routeTable, route,
 		masterSG, minionSG,
+		masterPV,
+		masterInstance,
 	}
 
 	resources = append(resources, masterSG.AllowFrom(masterSG))
@@ -535,7 +626,7 @@ func main() {
 	// HTTPS to the master is allowed (for API access)
 	resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 443, 443))
 
-	tags := map[string]string{"KubernetesCluster": clusterId}
+	tags := map[string]string{"KubernetesCluster": clusterID}
 	cloud := NewAWSCloud(region, tags)
 
 	target := NewBashTarget(cloud)

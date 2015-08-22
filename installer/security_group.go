@@ -83,7 +83,7 @@ func (s *SecurityGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		output.AddAssignment(s, sgId)
 	}
 
-	return output.AddAWSTags(cloud, s, "security-group")
+	return output.AddAWSTags(cloud.Tags(), s, "security-group")
 }
 
 func (s *SecurityGroupIngress) String() string {
