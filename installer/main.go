@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path"
 	"strconv"
@@ -559,7 +560,6 @@ func staticResource(key string) Resource {
 
 func main() {
 	var config Configuration
-	var clusterID string
 	var masterVolumeSize int
 	var volumeType string
 
@@ -567,8 +567,28 @@ func main() {
 
 	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
 
-	flag.StringVar(&clusterID, "cluster-id", "", "cluster id")
 	flag.StringVar(&config.Zone, "az", "us-east-1b", "AWS availability zone")
+	flag.BoolVar(&config.EnableClusterUI, "enable-cluster-ui", true, "Enable cluster UI")
+	flag.BoolVar(&config.EnableClusterDNS, "enable-cluster-dns", true, "Enable cluster DNS")
+	flag.BoolVar(&config.EnableClusterLogging, "enable-cluster-logging", true, "Enable cluster logging")
+	flag.StringVar(&config.LoggingDestination, "logging-destination", "elasticsearch", "Default logging destination")
+	flag.StringVar(&config.EnableClusterMonitoring, "enable-cluster-monitoring", "influxdb", "Set to enable monitoring")
+	flag.BoolVar(&config.EnableNodeLogging, "enable-node-logging", true, "Enable node logging")
+	flag.IntVar(&config.ElasticsearchLoggingReplicas, "elasticsearch-logging-replicas", 1, "Replicas to create for elasticsearch cluster")
+
+	flag.IntVar(&config.DNSReplicas, "dns-replicas", 1, "Number of replicas for DNS")
+	flag.StringVar(&config.DNSServerIP, "dns-server-ip", "10.0.0.10", "Service IP for DNS")
+	//flag.StringVar(&config.DNSDomain, "dns-domain", "cluster.local", "Domain for internal service DNS")
+
+	flag.StringVar(&config.AdmissionControl, "admission-control", "NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota", "Admission control policies")
+
+	flag.StringVar(&config.ServiceClusterIPRange, "service-cluster-ip-range", "10.0.0.0/16", "IP range to assign to services")
+	flag.StringVar(&config.ClusterIPRange, "cluster-ip-range", "10.244.0.0/16", "IP range for in-cluster (pod) IPs")
+	flag.StringVar(&config.MasterIPRange, "master-ip-range", "10.246.0.0/24", "IP range for master in-cluster (pod) IPs")
+
+	flag.StringVar(&config.DockerStorage, "docker-storage", "aufs", "Filesystem to use for docker storage")
+
+	flag.StringVar(&config.ClusterID, "cluster-id", "", "cluster id")
 	flag.StringVar(&volumeType, "volume-type", "gp2", "Type for EBS volumes")
 	flag.IntVar(&masterVolumeSize, "master-volume-size", 20, "Size for master volume")
 	flag.IntVar(&minionCount, "minion-count", 2, "Number of minions")
@@ -577,6 +597,7 @@ func main() {
 
 	flag.Parse()
 
+	clusterID := config.ClusterID
 	if clusterID == "" {
 		glog.Fatal("cluster-id is required")
 	}
@@ -586,6 +607,42 @@ func main() {
 		glog.Fatal("Invalid AZ: ", az)
 	}
 	region := az[:len(az)-1]
+
+	// Required to work with autoscaling minions
+	config.AllocateNodeCIDRs = true
+
+	// Simplifications
+	config.DNSDomain = "cluster.local"
+	instancePrefix := config.ClusterID
+	config.InstancePrefix = instancePrefix
+	masterInternalIP := "172.20.0.9"
+	config.SaltMaster = masterInternalIP
+	nodeInstancePrefix := instancePrefix + "-minion"
+	config.NodeInstancePrefix = nodeInstancePrefix
+	config.MasterName = instancePrefix + "-master"
+
+		config.ServerBinaryTarURL = serverBinaryTarURL
+		config.SaltTarURL = saltTarURL
+		config.KubeUser = kubeUser
+		config.KubePassword = kubePassword
+		KUBELET_TOKEN=''
+		KUBE_PROXY_TOKEN=''
+	
+	serviceIP, _, err := net.ParseCIDR(config.ServiceClusterIPRange)
+	if err != nil {
+		glog.Fatalf("Error parsing service-cluster-ip-range: %v", err)
+	}
+	serviceIP[len(serviceIP)-1]++
+
+	masterExtraSans := []string{
+		"IP:" + serviceIP.String(),
+		"DNS:kubernetes",
+		"DNS:kubernetes.default",
+		"DNS:kubernetes.default.svc",
+		"DNS:kubernetes.default.svc." + config.DNSDomain,
+		"DNS:" + config.MasterName,
+	}
+	config.MasterExtraSans = masterExtraSans
 
 	distro := &DistroVivid{}
 	imageID := distro.GetImageID(region)
@@ -627,7 +684,6 @@ func main() {
 	sshKey := &SSHKey{Name: "kubernetes-" + clusterID, PublicKeyPath: "~/.ssh/justin2015.pub"}
 	vpc := &VPC{CIDR: "172.20.0.0/16"}
 	subnet := &Subnet{VPC: vpc, AZ: az, CIDR: "172.20.0.0/24"}
-	masterInternalIP := "172.20.0.9"
 	igw := &InternetGateway{VPC: vpc}
 	routeTable := &RouteTable{Subnet: subnet}
 	route := &Route{RouteTable: routeTable, CIDR: "0.0.0.0/0", InternetGateway: igw}
@@ -752,7 +808,7 @@ func main() {
 
 	target.DebugDump()
 
-	err := target.PrintShellCommands(os.Stdout)
+	err = target.PrintShellCommands(os.Stdout)
 	if err != nil {
 		glog.Fatal("error building shell commands: %v", err)
 	}

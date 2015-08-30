@@ -110,7 +110,7 @@ func (m *MasterScript) Write(w io.Writer) error {
 	s.SetVar("INSTANCE_PREFIX", m.Config.InstancePrefix)
 	s.SetVar("NODE_INSTANCE_PREFIX", m.Config.NodeInstancePrefix)
 	s.SetVar("CLUSTER_IP_RANGE", m.Config.ClusterIPRange)
-	s.SetVar("ALLOCATE_NODE_CIDRS", m.Config.AllocateNodeCIDRs)
+	s.SetVarBool("ALLOCATE_NODE_CIDRS", m.Config.AllocateNodeCIDRs)
 	s.SetVar("SERVER_BINARY_TAR_URL", m.Config.ServerBinaryTarURL)
 	s.SetVar("SALT_TAR_URL", m.Config.SaltTarURL)
 	s.SetVar("ZONE", m.Config.Zone)
@@ -119,8 +119,8 @@ func (m *MasterScript) Write(w io.Writer) error {
 
 	s.SetVar("SERVICE_CLUSTER_IP_RANGE", m.Config.ServiceClusterIPRange)
 	s.SetVar("ENABLE_CLUSTER_MONITORING", m.Config.EnableClusterMonitoring)
-	s.SetVar("ENABLE_CLUSTER_LOGGING", m.Config.EnableClusterLogging)
-	s.SetVar("ENABLE_NODE_LOGGING", m.Config.EnableNodeLogging)
+	s.SetVarBool("ENABLE_CLUSTER_LOGGING", m.Config.EnableClusterLogging)
+	s.SetVarBool("ENABLE_NODE_LOGGING", m.Config.EnableNodeLogging)
 	s.SetVar("LOGGING_DESTINATION", m.Config.LoggingDestination)
 	s.SetVarInt("ELASTICSEARCH_LOGGING_REPLICAS", m.Config.ElasticsearchLoggingReplicas)
 
@@ -138,7 +138,7 @@ func (m *MasterScript) Write(w io.Writer) error {
 
 	s.SetVar("DOCKER_STORAGE", m.Config.DockerStorage)
 
-	s.SetVar("MASTER_EXTRA_SANS", m.Config.MasterExtraSans)
+	s.SetVar("MASTER_EXTRA_SANS", strings.Join(m.Config.MasterExtraSans, ","))
 
 	s.CopyTemplate("common.sh")
 	s.CopyTemplate("format-disks.sh")

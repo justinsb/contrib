@@ -1,21 +1,25 @@
 package main
 
 type Configuration struct {
-MasterInternalIP   string
+	ClusterID          string
+	MasterInternalIP   string
 	InstancePrefix     string
 	NodeInstancePrefix string
 	ClusterIPRange     string
-	AllocateNodeCIDRs  string
+	AllocateNodeCIDRs  bool
 	ServerBinaryTarURL string
 	SaltTarURL         string
 	Zone               string
 	KubeUser           string
 	KubePassword       string
 
+	SaltMaster string
+	MasterName string
+
 	ServiceClusterIPRange        string
 	EnableClusterMonitoring      string
-	EnableClusterLogging         string
-	EnableNodeLogging            string
+	EnableClusterLogging         bool
+	EnableNodeLogging            bool
 	LoggingDestination           string
 	ElasticsearchLoggingReplicas int
 
@@ -36,5 +40,5 @@ MasterInternalIP   string
 	DockerOptions string
 	DockerStorage string
 
-	MasterExtraSans string
+	MasterExtraSans []string
 }
