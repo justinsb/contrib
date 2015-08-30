@@ -18,6 +18,8 @@ import (
 	"github.com/golang/glog"
 )
 
+var templateDir = "templates"
+
 type BashRenderable interface {
 	RenderBash(cloud *AWSCloud, output *BashTarget) error
 }
@@ -253,10 +255,11 @@ type BashTarget struct {
 	cloud    *AWSCloud
 	commands []*BashCommand
 
-	ec2Args      []string
-	iamArgs      []string
-	vars         map[HasId]*BashVar
-	prefixCounts map[string]int
+	ec2Args              []string
+	iamArgs              []string
+	vars                 map[HasId]*BashVar
+	prefixCounts         map[string]int
+	resourcePrefixCounts map[string]int
 }
 
 func NewBashTarget(cloud *AWSCloud) *BashTarget {
@@ -265,6 +268,7 @@ func NewBashTarget(cloud *AWSCloud) *BashTarget {
 	b.iamArgs = []string{"aws", "iam"}
 	b.vars = make(map[HasId]*BashVar)
 	b.prefixCounts = make(map[string]int)
+	b.resourcePrefixCounts = make(map[string]int)
 	return b
 }
 
@@ -399,7 +403,17 @@ func (t *BashTarget) AddIAMCommand(args ...string) *BashCommand {
 
 func bashQuoteString(s string) string {
 	// TODO: Escaping
-	return "\"" + s + "\""
+	var quoted bytes.Buffer
+	for _, c := range s {
+		switch c {
+		case '"':
+			quoted.WriteString("\\\"")
+		default:
+			quoted.WriteString(string(c))
+		}
+	}
+
+	return "\"" + string(quoted.Bytes()) + "\""
 }
 
 func (t *BashTarget) AddAWSTags(expected map[string]string, s HasId, resourceType string) error {
@@ -464,13 +478,46 @@ func (t *BashTarget) FindValue(h HasId) (string, bool) {
 	return *bv.staticValue, true
 }
 
-func (t *BashTarget) AddResource(resource Resource) string {
+func (t *BashTarget) generateDynamicPath(prefix string) string {
+	basePath := "resources"
+	n := t.resourcePrefixCounts[prefix]
+	n++
+	t.resourcePrefixCounts[prefix] = n
+
+	name := prefix + "_" + strconv.Itoa(n)
+	p := path.Join(basePath, name)
+	return p
+}
+
+func (t *BashTarget) AddResource(resource Resource) (string, error) {
+	dynamicResource, ok := resource.(DynamicResource)
+	if ok {
+		path := t.generateDynamicPath(dynamicResource.Prefix())
+		f, err := os.Create(path)
+		if err != nil {
+			return "", err
+		}
+		defer func() {
+			err := f.Close()
+			if err != nil {
+				glog.Warning("Error closing resource file", err)
+			}
+		}()
+
+		err = dynamicResource.Write(f)
+		if err != nil {
+			return "", fmt.Errorf("error writing resource: %v", err)
+		}
+
+		return path, nil
+	}
+
 	switch r := resource.(type) {
 	default:
 		log.Fatal("unknown resource type: ", r)
-		return ""
+		return "", fmt.Errorf("unknown resource type: %v", r)
 	case FileResource:
-		return "file://" + r.Path
+		return r.Path, nil
 	}
 }
 
@@ -501,7 +548,10 @@ func (k *SSHKey) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		return nil
 	}
 
-	file := output.AddResource(k.PublicKeyPath)
+	file, err := output.AddResource(k.PublicKeyPath)
+	if err != nil {
+		return err
+	}
 	output.AddEC2Command("import-key-pair", "--key-name", k.Name, "--public-key-material", file)
 	return nil
 }
@@ -514,7 +564,7 @@ func staticResource(key string) Resource {
 }
 
 func main() {
-	var configuration Configuration
+	var config Configuration
 	var clusterID string
 	var masterVolumeSize int
 	var volumeType string
@@ -522,9 +572,11 @@ func main() {
 	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
 
 	flag.StringVar(&clusterID, "cluster-id", "", "cluster id")
-	flag.StringVar(&configuration.Zone, "az", "us-east-1b", "AWS availability zone")
+	flag.StringVar(&config.Zone, "az", "us-east-1b", "AWS availability zone")
 	flag.StringVar(&volumeType, "volume-type", "gp2", "Type for EBS volumes")
 	flag.IntVar(&masterVolumeSize, "master-volume-size", 20, "Size for master volume")
+
+	flag.Set("alsologtostderr", "true")
 
 	flag.Parse()
 
@@ -532,11 +584,20 @@ func main() {
 		glog.Fatal("cluster-id is required")
 	}
 
-	az := configuration.Zone
+	az := config.Zone
 	if len(az) <= 2 {
 		glog.Fatal("Invalid AZ: ", az)
 	}
 	region := az[:len(az)-1]
+
+	distro := &DistroVivid{}
+	imageID := distro.GetImageID(region)
+
+	if imageID == "" {
+		log.Fatal("ImageID could not be determined")
+	}
+
+	instanceType := "m3.medium"
 
 	iamMasterRole := &IAMRole{
 		Name:               "kubernetes-master",
@@ -569,6 +630,7 @@ func main() {
 	sshKey := &SSHKey{Name: "kubernetes-" + clusterID, PublicKeyPath: "~/.ssh/justin2015.pub"}
 	vpc := &VPC{CIDR: "172.20.0.0/16"}
 	subnet := &Subnet{VPC: vpc, AZ: az, CIDR: "172.20.0.0/24"}
+	masterInternalIP := "172.20.0.9"
 	igw := &InternetGateway{VPC: vpc}
 	routeTable := &RouteTable{Subnet: subnet}
 	route := &Route{RouteTable: routeTable, CIDR: "0.0.0.0/0", InternetGateway: igw}
@@ -588,20 +650,36 @@ func main() {
 		NameTag:    clusterID + "-master-pd",
 	}
 
+	masterUserData := &MasterScript{
+		Config: &config,
+	}
+
+	masterBlockDeviceMappings := []ec2.BlockDeviceMapping{}
+
+	// Be sure to map all the ephemeral drives.  We can specify more than we actually have.
+	// TODO: Actually mount the correct number (especially if we have more), though this is non-trivial, and
+	//  only affects the big storage instance types, which aren't a typical use case right now.
+	for i := 0; i < 4; i++ {
+		bdm := &ec2.BlockDeviceMapping{
+			DeviceName:  aws.String("/dev/sd" + string('c'+i)),
+			VirtualName: aws.String("ephemeral" + strconv.Itoa(i)),
+		}
+		masterBlockDeviceMappings = append(masterBlockDeviceMappings, *bdm)
+	}
+
 	masterInstance := &Instance{
-		NameTag:            clusterID + "-master",
-		Subnet:             subnet,
-		SSHKey:             sshKey,
-		SecurityGroups:     []*SecurityGroup{masterSG},
-		IAMInstanceProfile: iamMasterInstanceProfile,
-		/*ImageID             string
-		  InstanceType        string
-		  PrivateIPAddress    string
-		  AssociatePublicIP   bool
-		  BlockDeviceMappings []ec2.BlockDeviceMapping
-		  UserData            Resource
-		  IAMInstanceProfile  *IAMInstanceProfile
-		*/
+		NameTag:             clusterID + "-master",
+		Subnet:              subnet,
+		SSHKey:              sshKey,
+		SecurityGroups:      []*SecurityGroup{masterSG},
+		IAMInstanceProfile:  iamMasterInstanceProfile,
+		ImageID:             imageID,
+		InstanceType:        instanceType,
+		AssociatePublicIP:   true,
+		PrivateIPAddress:    masterInternalIP,
+		BlockDeviceMappings: masterBlockDeviceMappings,
+		UserData:            masterUserData,
+		Tags:                map[string]string{"Role": "master"},
 	}
 
 	resources := []BashRenderable{

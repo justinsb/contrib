@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"path"
 	"strconv"
+	"strings"
 
 	"github.com/golang/glog"
 )
@@ -13,9 +16,13 @@ type MasterScript struct {
 	Config *Configuration
 }
 
+var _ DynamicResource = &MasterScript{}
+
 type MinionScript struct {
 	Config *Configuration
 }
+
+var _ DynamicResource = &MinionScript{}
 
 type ScriptWriter struct {
 	buffer bytes.Buffer
@@ -50,7 +57,22 @@ func (sw *ScriptWriter) WriteTo(w io.Writer) error {
 }
 
 func (s *ScriptWriter) CopyTemplate(key string) {
-	glog.Fatal("CopyTemplate not implemented")
+	templatePath := path.Join(templateDir, key)
+	contents, err := ioutil.ReadFile(templatePath)
+	if err != nil {
+		glog.Fatalf("error reading template (%s): %v", templatePath, err)
+	}
+
+	for _, line := range strings.Split(string(contents), "\n") {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		s.WriteString(line + "\n")
+	}
+}
+
+func (m *MinionScript) Prefix() string {
+	return "minion_script"
 }
 
 func (m *MinionScript) Write(w io.Writer) error {
@@ -72,13 +94,17 @@ func (m *MinionScript) Write(w io.Writer) error {
 	return s.WriteTo(w)
 }
 
+func (m *MasterScript) Prefix() string {
+	return "master_script"
+}
+
 func (m *MasterScript) Write(w io.Writer) error {
 	var s ScriptWriter
 
 	// We send this to the ami as a startup script in the user-data field.  Requires a compatible ami
 	s.WriteString("#! /bin/bash\n")
-	s.WriteString("mkdir -p /var/cache/kubernetes-install")
-	s.WriteString("cd /var/cache/kubernetes-install")
+	s.WriteString("mkdir -p /var/cache/kubernetes-install\n")
+	s.WriteString("cd /var/cache/kubernetes-install\n")
 
 	s.SetVar("SALT_MASTER", m.Config.MasterInternalIP)
 	s.SetVar("INSTANCE_PREFIX", m.Config.InstancePrefix)

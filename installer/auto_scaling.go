@@ -5,62 +5,52 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 )
 
-type Instance struct {
-	NameTag             string
+type AutoScalingLaunchConfiguration struct {
+	Name                string
 	ImageID             string
 	InstanceType        string
-	Subnet              *Subnet
 	SSHKey              *SSHKey
 	SecurityGroups      []*SecurityGroup
-	PrivateIPAddress    string
 	AssociatePublicIP   bool
 	BlockDeviceMappings []ec2.BlockDeviceMapping
 	UserData            Resource
 	IAMInstanceProfile  *IAMInstanceProfile
-	Tags                map[string]string
 }
 
-func (i *Instance) Prefix() string {
-	return "Instance"
+func (l *AutoScalingLaunchConfiguration) Prefix() string {
+	return "LaunchConfig"
 }
 
-func (i *Instance) String() string {
-	return fmt.Sprintf("Instance (name=%s)", i.NameTag)
+func (l *AutoScalingLaunchConfiguration) String() string {
+	return fmt.Sprintf("LaunchConfiguration (name=%s)", l.Name)
 }
 
-func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	var existing *ec2.Instance
+func (l *AutoScalingLaunchConfiguration) RenderBash(cloud *AWSCloud, output *BashTarget) error {
+	var existing *autoscaling.LaunchConfiguration
 
-	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("tag:Name", i.NameTag))
-	request := &ec2.DescribeInstancesInput{
-		Filters: filters,
+	name := l.Name
+
+	request := &autoscaling.DescribeLaunchConfigurationsInput{
+		LaunchConfigurationNames: []*string{&name},
 	}
 
-	response, err := cloud.ec2.DescribeInstances(request)
+	response, err := cloud.autoscaling.DescribeLaunchConfigurations(request)
 	if err != nil {
-		return fmt.Errorf("error listing instances: %v", err)
+		return fmt.Errorf("error listing launch configurations: %v", err)
 	}
 
 	if response != nil {
-		instances := []*ec2.Instance{}
-		for _, reservation := range response.Reservations {
-			for _, instance := range reservation.Instances {
-				instances = append(instances, instance)
+		if len(response.LaunchConfigurations) != 0 {
+			if len(response.LaunchConfigurations) != 1 {
+				glog.Fatalf("found multiple launch configurations with name: %s", name)
 			}
-		}
-
-		if len(instances) != 0 {
-			if len(instances) != 1 {
-				glog.Fatalf("found multiple instances with name: %s", i.NameTag)
-			}
-			glog.V(2).Info("found existing instance")
-			existing = instances[0]
+			glog.V(2).Info("found existing launch configuration")
+			existing = response.LaunchConfigurations[0]
 		}
 	}
 
@@ -68,14 +58,12 @@ func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 
 	output.CreateVar(i)
 	if existing == nil {
-		glog.V(2).Info("instance not found; will create: ", i)
-		args := []string{"run-instances"}
+		glog.V(2).Info("launch configuration not found; will create: ", i)
+		args := []string{"create-launch-configuration"}
+		// TODO: This is copy-and-pasted from instance.  Create InstanceConfig for shared config?
+		args = append(args, "--launch-configuration-name", name)
 		args = append(args, "--image-id", i.ImageID)
 		args = append(args, "--instance-type", i.InstanceType)
-		args = append(args, "--subnet-id", output.ReadVar(i.Subnet))
-		if i.PrivateIPAddress != "" {
-			args = append(args, "--private-ip-address", i.PrivateIPAddress)
-		}
 		if i.SSHKey != nil {
 			args = append(args, "--key-name", i.SSHKey.Name)
 		}
@@ -116,23 +104,10 @@ func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 			args = append(args, "--user-data", "file://"+tempFile)
 		}
 		if i.IAMInstanceProfile != nil {
-			args = append(args, "--iam-instance-profile", "Name="+i.IAMInstanceProfile.Name)
+			args = append(args, "--iam-instance-profile", i.IAMInstanceProfile.Name)
 		}
-		args = append(args, "--query", "Instances[0].InstanceId")
-
-		output.AddEC2Command(args...).AssignTo(i)
-	} else {
-		output.AddAssignment(i, aws.StringValue(existing.InstanceId))
+		output.AddEC2Command(args...)
 	}
 
-	tags := cloud.Tags()
-	tags["Name"] = i.NameTag
-
-	if i.Tags != nil {
-		for k, v := range i.Tags {
-			tags[k] = v
-		}
-	}
-
-	return output.AddAWSTags(tags, i, "instance")
+	return nil
 }

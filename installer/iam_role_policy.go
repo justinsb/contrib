@@ -32,7 +32,10 @@ func (r *IAMRolePolicy) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	if existing == nil {
 		glog.V(2).Info("Role policy not found; will create: ", r)
 
-		policyDocument := output.AddResource(r.PolicyDocument)
+		policyDocument, err := output.AddResource(r.PolicyDocument)
+		if err != nil {
+			return err
+		}
 		output.AddIAMCommand("put-role-policy",
 			"--role-name", r.Role.Name,
 			"--policy-name", r.Name,

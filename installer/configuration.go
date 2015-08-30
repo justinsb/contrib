@@ -1,7 +1,7 @@
 package main
 
 type Configuration struct {
-	MasterInternalIP   string
+MasterInternalIP   string
 	InstancePrefix     string
 	NodeInstancePrefix string
 	ClusterIPRange     string

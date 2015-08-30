@@ -28,7 +28,11 @@ func (r *IAMRole) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	if existing == nil {
 		glog.V(2).Info("Role not found; will create: ", r)
 
-		rolePolicyDocument := output.AddResource(r.RolePolicyDocument)
+		rolePolicyDocument, err := output.AddResource(r.RolePolicyDocument)
+		if err != nil {
+			return err
+		}
+
 		output.AddIAMCommand("create-role",
 			"--role-name", r.Name,
 			"--assume-role-policy-document", rolePolicyDocument)
