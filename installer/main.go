@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
@@ -155,30 +156,12 @@ func (s *Subnet) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	return output.AddAWSTags(cloud.Tags(), s, "subnet")
 }
 
-type ASGLaunchConfiguration struct {
-	name               string
-	imageID            string
-	iamInstanceProfile string
-	instanceType       string
-	sshKey             *SSHKey
-	securityGroups     []*SecurityGroup
-	publicIP           bool
-	userData           string
-}
-
-type AutoScalingGroup struct {
-	name            string
-	launchConfigure *ASGLaunchConfiguration
-	minSize         int
-	maxSize         int
-	subnet          *Subnet
-}
-
 type AWSCloud struct {
-	region string
-	iam    *iam.IAM
-	ec2    *ec2.EC2
-	tags   map[string]string
+	region      string
+	iam         *iam.IAM
+	ec2         *ec2.EC2
+	autoscaling *autoscaling.AutoScaling
+	tags        map[string]string
 }
 
 func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
@@ -186,6 +169,7 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	config := aws.NewConfig().WithRegion(region)
 	c.ec2 = ec2.New(config)
 	c.iam = iam.New(config)
+	c.autoscaling = autoscaling.New(config)
 	c.tags = tags
 	return c
 }
@@ -256,6 +240,7 @@ type BashTarget struct {
 	commands []*BashCommand
 
 	ec2Args              []string
+	autoscalingArgs      []string
 	iamArgs              []string
 	vars                 map[HasId]*BashVar
 	prefixCounts         map[string]int
@@ -265,6 +250,7 @@ type BashTarget struct {
 func NewBashTarget(cloud *AWSCloud) *BashTarget {
 	b := &BashTarget{cloud: cloud}
 	b.ec2Args = []string{"aws", "ec2"}
+	b.autoscalingArgs = []string{"aws", "autoscaling"}
 	b.iamArgs = []string{"aws", "iam"}
 	b.vars = make(map[HasId]*BashVar)
 	b.prefixCounts = make(map[string]int)
@@ -388,6 +374,14 @@ func (t *BashTarget) PrintShellCommands(w io.Writer) error {
 func (t *BashTarget) AddEC2Command(args ...string) *BashCommand {
 	cmd := &BashCommand{parent: t}
 	cmd.args = t.ec2Args
+	cmd.args = append(cmd.args, args...)
+
+	return t.AddCommand(cmd)
+}
+
+func (t *BashTarget) AddAutoscalingCommand(args ...string) *BashCommand {
+	cmd := &BashCommand{parent: t}
+	cmd.args = t.autoscalingArgs
 	cmd.args = append(cmd.args, args...)
 
 	return t.AddCommand(cmd)
@@ -569,12 +563,15 @@ func main() {
 	var masterVolumeSize int
 	var volumeType string
 
+	var minionCount int
+
 	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
 
 	flag.StringVar(&clusterID, "cluster-id", "", "cluster id")
 	flag.StringVar(&config.Zone, "az", "us-east-1b", "AWS availability zone")
 	flag.StringVar(&volumeType, "volume-type", "gp2", "Type for EBS volumes")
 	flag.IntVar(&masterVolumeSize, "master-volume-size", 20, "Size for master volume")
+	flag.IntVar(&minionCount, "minion-count", 2, "Number of minions")
 
 	flag.Set("alsologtostderr", "true")
 
@@ -667,19 +664,51 @@ func main() {
 		masterBlockDeviceMappings = append(masterBlockDeviceMappings, *bdm)
 	}
 
+	minionBlockDeviceMappings := masterBlockDeviceMappings
+	minionUserData := &MinionScript{
+		Config: &config,
+	}
+
 	masterInstance := &Instance{
-		NameTag:             clusterID + "-master",
+		NameTag: clusterID + "-master",
+		InstanceConfig: InstanceConfig{
+			Subnet:              subnet,
+			SSHKey:              sshKey,
+			SecurityGroups:      []*SecurityGroup{masterSG},
+			IAMInstanceProfile:  iamMasterInstanceProfile,
+			ImageID:             imageID,
+			InstanceType:        instanceType,
+			AssociatePublicIP:   true,
+			PrivateIPAddress:    masterInternalIP,
+			BlockDeviceMappings: masterBlockDeviceMappings,
+			UserData:            masterUserData,
+		},
+		Tags: map[string]string{"Role": "master"},
+	}
+
+	minionConfiguration := &AutoscalingLaunchConfiguration{
+		Name: clusterID + "-minion-group",
+		InstanceConfig: InstanceConfig{
+			SSHKey:              sshKey,
+			SecurityGroups:      []*SecurityGroup{minionSG},
+			IAMInstanceProfile:  iamMinionInstanceProfile,
+			ImageID:             imageID,
+			InstanceType:        instanceType,
+			AssociatePublicIP:   true,
+			BlockDeviceMappings: minionBlockDeviceMappings,
+			UserData:            minionUserData,
+		},
+	}
+
+	minionGroup := &AutoscalingGroup{
+		Name:                clusterID + "-minion-group",
+		LaunchConfiguration: minionConfiguration,
+		MinSize:             minionCount,
+		MaxSize:             minionCount,
 		Subnet:              subnet,
-		SSHKey:              sshKey,
-		SecurityGroups:      []*SecurityGroup{masterSG},
-		IAMInstanceProfile:  iamMasterInstanceProfile,
-		ImageID:             imageID,
-		InstanceType:        instanceType,
-		AssociatePublicIP:   true,
-		PrivateIPAddress:    masterInternalIP,
-		BlockDeviceMappings: masterBlockDeviceMappings,
-		UserData:            masterUserData,
-		Tags:                map[string]string{"Role": "master"},
+		Tags: map[string]string{
+			"Role": "minion",
+		},
 	}
 
 	resources := []BashRenderable{
@@ -690,6 +719,9 @@ func main() {
 		masterSG, minionSG,
 		masterPV,
 		masterInstance,
+
+		minionConfiguration,
+		minionGroup,
 	}
 
 	resources = append(resources, masterSG.AllowFrom(masterSG))

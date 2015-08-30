@@ -1,36 +1,26 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 )
 
-type AutoScalingLaunchConfiguration struct {
-	Name                string
-	ImageID             string
-	InstanceType        string
-	SSHKey              *SSHKey
-	SecurityGroups      []*SecurityGroup
-	AssociatePublicIP   bool
-	BlockDeviceMappings []ec2.BlockDeviceMapping
-	UserData            Resource
-	IAMInstanceProfile  *IAMInstanceProfile
+type AutoscalingLaunchConfiguration struct {
+	InstanceConfig
+	Name string
 }
 
-func (l *AutoScalingLaunchConfiguration) Prefix() string {
+func (l *AutoscalingLaunchConfiguration) Prefix() string {
 	return "LaunchConfig"
 }
 
-func (l *AutoScalingLaunchConfiguration) String() string {
+func (l *AutoscalingLaunchConfiguration) String() string {
 	return fmt.Sprintf("LaunchConfiguration (name=%s)", l.Name)
 }
 
-func (l *AutoScalingLaunchConfiguration) RenderBash(cloud *AWSCloud, output *BashTarget) error {
+func (l *AutoscalingLaunchConfiguration) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	var existing *autoscaling.LaunchConfiguration
 
 	name := l.Name
@@ -56,57 +46,13 @@ func (l *AutoScalingLaunchConfiguration) RenderBash(cloud *AWSCloud, output *Bas
 
 	// TODO: Validate existing
 
-	output.CreateVar(i)
 	if existing == nil {
-		glog.V(2).Info("launch configuration not found; will create: ", i)
+		glog.V(2).Info("launch configuration not found; will create: ", l)
 		args := []string{"create-launch-configuration"}
-		// TODO: This is copy-and-pasted from instance.  Create InstanceConfig for shared config?
 		args = append(args, "--launch-configuration-name", name)
-		args = append(args, "--image-id", i.ImageID)
-		args = append(args, "--instance-type", i.InstanceType)
-		if i.SSHKey != nil {
-			args = append(args, "--key-name", i.SSHKey.Name)
-		}
-		if i.SecurityGroups != nil {
-			ids := ""
-			for _, sg := range i.SecurityGroups {
-				if ids != "" {
-					ids = ids + ","
-				}
-				ids = ids + output.ReadVar(sg)
-			}
-			args = append(args, "--security-group-ids", ids)
-		}
-		if i.AssociatePublicIP {
-			args = append(args, "--associate-public-ip-address")
-		} else {
-			args = append(args, "--no-associate-public-ip-address")
-		}
-		if i.BlockDeviceMappings != nil {
-			j, err := json.Marshal(i.BlockDeviceMappings)
-			if err != nil {
-				return fmt.Errorf("error converting BlockDeviceMappings to JSON: %v", err)
-			}
+		args = append(args, l.buildInstanceConfigArgs(output)...)
 
-			bdm := string(j)
-			// Hack to remove null values
-			bdm = strings.Replace(bdm, "\"Ebs\":null,", "", -1)
-			bdm = strings.Replace(bdm, "\"NoDevice\":null,", "", -1)
-			bdm = strings.Replace(bdm, "\"VirtualName\":null,", "", -1)
-
-			args = append(args, "--block-device-mappings", bashQuoteString(bdm))
-		}
-		if i.UserData != nil {
-			tempFile, err := output.AddResource(i.UserData)
-			if err != nil {
-				return err
-			}
-			args = append(args, "--user-data", "file://"+tempFile)
-		}
-		if i.IAMInstanceProfile != nil {
-			args = append(args, "--iam-instance-profile", i.IAMInstanceProfile.Name)
-		}
-		output.AddEC2Command(args...)
+		output.AddAutoscalingCommand(args...)
 	}
 
 	return nil

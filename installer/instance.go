@@ -10,8 +10,8 @@ import (
 	"github.com/golang/glog"
 )
 
-type Instance struct {
-	NameTag             string
+// Config common to Instance and ASG LaunchConfiguration
+type InstanceConfig struct {
 	ImageID             string
 	InstanceType        string
 	Subnet              *Subnet
@@ -22,7 +22,68 @@ type Instance struct {
 	BlockDeviceMappings []ec2.BlockDeviceMapping
 	UserData            Resource
 	IAMInstanceProfile  *IAMInstanceProfile
-	Tags                map[string]string
+}
+
+func (i *InstanceConfig) buildInstanceConfigArgs(output *BashTarget) []string {
+	args := []string{}
+	args = append(args, "--image-id", i.ImageID)
+	args = append(args, "--instance-type", i.InstanceType)
+	if i.Subnet != nil {
+		args = append(args, "--subnet-id", output.ReadVar(i.Subnet))
+	}
+	if i.PrivateIPAddress != "" {
+		args = append(args, "--private-ip-address", i.PrivateIPAddress)
+	}
+	if i.SSHKey != nil {
+		args = append(args, "--key-name", i.SSHKey.Name)
+	}
+	if i.SecurityGroups != nil {
+		ids := ""
+		for _, sg := range i.SecurityGroups {
+			if ids != "" {
+				ids = ids + ","
+			}
+			ids = ids + output.ReadVar(sg)
+		}
+		args = append(args, "--security-group-ids", ids)
+	}
+	if i.AssociatePublicIP {
+		args = append(args, "--associate-public-ip-address")
+	} else {
+		args = append(args, "--no-associate-public-ip-address")
+	}
+	if i.BlockDeviceMappings != nil {
+		j, err := json.Marshal(i.BlockDeviceMappings)
+		if err != nil {
+			glog.Fatalf("error converting BlockDeviceMappings to JSON: %v", err)
+		}
+
+		bdm := string(j)
+		// Hack to remove null values
+		bdm = strings.Replace(bdm, "\"Ebs\":null,", "", -1)
+		bdm = strings.Replace(bdm, "\"NoDevice\":null,", "", -1)
+		bdm = strings.Replace(bdm, "\"VirtualName\":null,", "", -1)
+
+		args = append(args, "--block-device-mappings", bashQuoteString(bdm))
+	}
+	if i.UserData != nil {
+		tempFile, err := output.AddResource(i.UserData)
+		if err != nil {
+			glog.Fatalf("error adding resource: %v", err)
+		}
+		args = append(args, "--user-data", "file://"+tempFile)
+	}
+	if i.IAMInstanceProfile != nil {
+		args = append(args, "--iam-instance-profile", "Name="+i.IAMInstanceProfile.Name)
+	}
+	return args
+}
+
+type Instance struct {
+	InstanceConfig
+
+	NameTag string
+	Tags    map[string]string
 }
 
 func (i *Instance) Prefix() string {
@@ -70,54 +131,8 @@ func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	if existing == nil {
 		glog.V(2).Info("instance not found; will create: ", i)
 		args := []string{"run-instances"}
-		args = append(args, "--image-id", i.ImageID)
-		args = append(args, "--instance-type", i.InstanceType)
-		args = append(args, "--subnet-id", output.ReadVar(i.Subnet))
-		if i.PrivateIPAddress != "" {
-			args = append(args, "--private-ip-address", i.PrivateIPAddress)
-		}
-		if i.SSHKey != nil {
-			args = append(args, "--key-name", i.SSHKey.Name)
-		}
-		if i.SecurityGroups != nil {
-			ids := ""
-			for _, sg := range i.SecurityGroups {
-				if ids != "" {
-					ids = ids + ","
-				}
-				ids = ids + output.ReadVar(sg)
-			}
-			args = append(args, "--security-group-ids", ids)
-		}
-		if i.AssociatePublicIP {
-			args = append(args, "--associate-public-ip-address")
-		} else {
-			args = append(args, "--no-associate-public-ip-address")
-		}
-		if i.BlockDeviceMappings != nil {
-			j, err := json.Marshal(i.BlockDeviceMappings)
-			if err != nil {
-				return fmt.Errorf("error converting BlockDeviceMappings to JSON: %v", err)
-			}
+		args = append(args, i.buildInstanceConfigArgs(output)...)
 
-			bdm := string(j)
-			// Hack to remove null values
-			bdm = strings.Replace(bdm, "\"Ebs\":null,", "", -1)
-			bdm = strings.Replace(bdm, "\"NoDevice\":null,", "", -1)
-			bdm = strings.Replace(bdm, "\"VirtualName\":null,", "", -1)
-
-			args = append(args, "--block-device-mappings", bashQuoteString(bdm))
-		}
-		if i.UserData != nil {
-			tempFile, err := output.AddResource(i.UserData)
-			if err != nil {
-				return err
-			}
-			args = append(args, "--user-data", "file://"+tempFile)
-		}
-		if i.IAMInstanceProfile != nil {
-			args = append(args, "--iam-instance-profile", "Name="+i.IAMInstanceProfile.Name)
-		}
 		args = append(args, "--query", "Instances[0].InstanceId")
 
 		output.AddEC2Command(args...).AssignTo(i)
