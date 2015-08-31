@@ -209,12 +209,14 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	return c
 }
 
-func newEc2Filter(name string, value string) *ec2.Filter {
+func newEc2Filter(name string, values ...string) *ec2.Filter {
+	awsValues := []*string{}
+	for _, value := range values {
+		awsValues = append(awsValues, aws.String(value))
+	}
 	filter := &ec2.Filter{
-		Name: aws.String(name),
-		Values: []*string{
-			aws.String(value),
-		},
+		Name:   aws.String(name),
+		Values: awsValues,
 	}
 	return filter
 }

@@ -123,6 +123,7 @@ func (i *Instance) findExisting(cloud *AWSCloud) (*ec2.Instance, error) {
 
 	filters := cloud.BuildFilters()
 	filters = append(filters, newEc2Filter("tag:Name", i.NameTag))
+	filters = append(filters, newEc2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
 	request := &ec2.DescribeInstancesInput{
 		Filters: filters,
 	}
