@@ -45,12 +45,11 @@ func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		// TODO: Target correct region
 		response, err := cloud.s3.HeadObject(request)
 		if err != nil {
-			if awsError, ok := err.(awserr.Error); ok {
-				if awsError.Code() == "NoSuchBucket" {
+			if requestFailure, ok := err.(awserr.RequestFailure); ok {
+				if requestFailure.StatusCode() == 404 {
 					err = nil
 					response = nil
 				}
-				glog.Info("AWS Error: ", awsError.Code())
 			}
 		}
 		if err != nil {

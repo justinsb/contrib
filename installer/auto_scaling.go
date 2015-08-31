@@ -50,7 +50,7 @@ func (l *AutoscalingLaunchConfiguration) RenderBash(cloud *AWSCloud, output *Bas
 		glog.V(2).Info("launch configuration not found; will create: ", l)
 		args := []string{"create-launch-configuration"}
 		args = append(args, "--launch-configuration-name", name)
-		args = append(args, l.buildInstanceConfigArgs(output)...)
+		args = append(args, l.buildAutoscalingCreateArgs(output)...)
 
 		output.AddAutoscalingCommand(args...)
 	}

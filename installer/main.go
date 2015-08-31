@@ -59,8 +59,8 @@ type BashRenderable interface {
 }
 
 type SSHKey struct {
-	Name          string
-	PublicKeyPath string
+	Name      string
+	PublicKey Resource
 }
 
 func (k *SSHKey) String() string {
@@ -593,11 +593,11 @@ func (k *SSHKey) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		return nil
 	}
 
-	file, err := output.AddResource(k.PublicKeyPath)
+	file, err := output.AddResource(k.PublicKey)
 	if err != nil {
 		return err
 	}
-	output.AddEC2Command("import-key-pair", "--key-name", k.Name, "--public-key-material", file)
+	output.AddEC2Command("import-key-pair", "--key-name", k.Name, "--public-key-material", "file://"+file)
 	return nil
 }
 
@@ -792,7 +792,7 @@ func main() {
 		Role: iamMinionRole,
 	}
 
-	sshKey := &SSHKey{Name: "kubernetes-" + clusterID, PublicKeyPath: "~/.ssh/justin2015.pub"}
+	sshKey := &SSHKey{Name: "kubernetes-" + clusterID, PublicKey: &FileResource{Path: "~/.ssh/justin2015.pub"}}
 	vpc := &VPC{CIDR: "172.20.0.0/16"}
 	subnet := &Subnet{VPC: vpc, AZ: az, CIDR: "172.20.0.0/24"}
 	igw := &InternetGateway{VPC: vpc}

@@ -21,7 +21,7 @@ func (g *AutoscalingGroup) String() string {
 	return fmt.Sprintf("AutoscalingGroup (name=%s)", g.Name)
 }
 
-func (g *AutoscalingGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error {
+func (g *AutoscalingGroup) findExisting(cloud *AWSCloud) (*autoscaling.Group, error) {
 	var existing *autoscaling.Group
 
 	name := g.Name
@@ -32,7 +32,7 @@ func (g *AutoscalingGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error
 
 	response, err := cloud.autoscaling.DescribeAutoScalingGroups(request)
 	if err != nil {
-		return fmt.Errorf("error listing autoscaling groups: %v", err)
+		return nil, fmt.Errorf("error listing autoscaling groups: %v", err)
 	}
 
 	if response != nil {
@@ -45,12 +45,39 @@ func (g *AutoscalingGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error
 		}
 	}
 
+	return existing, nil
+}
+
+func (g *AutoscalingGroup) Destroy(cloud *AWSCloud, output *BashTarget) error {
+	existing, err := g.findExisting(cloud)
+	if err != nil {
+		return err
+	}
+
+	if existing != nil {
+		glog.V(2).Info("found autoscaling group; will delete: ", g)
+		args := []string{"delete-auto-scaling-group"}
+		args = append(args, "--auto-scaling-group-name", g.Name)
+		args = append(args, "--force-delete")
+
+		output.AddAutoscalingCommand(args...)
+	}
+
+	return nil
+}
+
+func (g *AutoscalingGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error {
+	existing, err := g.findExisting(cloud)
+	if err != nil {
+		return err
+	}
+
 	// TODO: Validate existing
 
 	if existing == nil {
 		glog.V(2).Info("autoscaling group not found; will create: ", g)
 		args := []string{"create-auto-scaling-group"}
-		args = append(args, "--auto-scaling-group-name", name)
+		args = append(args, "--auto-scaling-group-name", g.Name)
 		args = append(args, "--launch-configuration-name", g.LaunchConfiguration.Name)
 		args = append(args, "--min-size", strconv.Itoa(g.MinSize))
 		args = append(args, "--max-size", strconv.Itoa(g.MaxSize))
@@ -66,8 +93,8 @@ func (g *AutoscalingGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error
 
 		if len(tags) != 0 {
 			args = append(args, "--tags")
-			for k, v := range g.Tags {
-				args = append(args, fmt.Sprintf("ResourceId=%s,ResourceType=auto-scaling-group,Key=%s,Value=%s", name, k, v))
+			for k, v := range tags {
+				args = append(args, fmt.Sprintf("ResourceId=%s,ResourceType=auto-scaling-group,Key=%s,Value=%s", g.Name, k, v))
 			}
 		}
 

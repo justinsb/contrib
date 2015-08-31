@@ -24,7 +24,7 @@ type InstanceConfig struct {
 	IAMInstanceProfile  *IAMInstanceProfile
 }
 
-func (i *InstanceConfig) buildInstanceConfigArgs(output *BashTarget) []string {
+func (i *InstanceConfig) buildCommonCreateArgs(output *BashTarget) []string {
 	args := []string{}
 	args = append(args, "--image-id", i.ImageID)
 	args = append(args, "--instance-type", i.InstanceType)
@@ -36,16 +36,6 @@ func (i *InstanceConfig) buildInstanceConfigArgs(output *BashTarget) []string {
 	}
 	if i.SSHKey != nil {
 		args = append(args, "--key-name", i.SSHKey.Name)
-	}
-	if i.SecurityGroups != nil {
-		ids := ""
-		for _, sg := range i.SecurityGroups {
-			if ids != "" {
-				ids = ids + ","
-			}
-			ids = ids + output.ReadVar(sg)
-		}
-		args = append(args, "--security-group-ids", ids)
 	}
 	if i.AssociatePublicIP {
 		args = append(args, "--associate-public-ip-address")
@@ -73,8 +63,42 @@ func (i *InstanceConfig) buildInstanceConfigArgs(output *BashTarget) []string {
 		}
 		args = append(args, "--user-data", "file://"+tempFile)
 	}
+
+	return args
+}
+
+func (i *InstanceConfig) buildEC2CreateArgs(output *BashTarget) []string {
+	args := i.buildCommonCreateArgs(output)
+	if i.SecurityGroups != nil {
+		ids := ""
+		for _, sg := range i.SecurityGroups {
+			if ids != "" {
+				ids = ids + ","
+			}
+			ids = ids + output.ReadVar(sg)
+		}
+		args = append(args, "--security-group-ids", ids)
+	}
 	if i.IAMInstanceProfile != nil {
 		args = append(args, "--iam-instance-profile", "Name="+i.IAMInstanceProfile.Name)
+	}
+	return args
+}
+
+func (i *InstanceConfig) buildAutoscalingCreateArgs(output *BashTarget) []string {
+	args := i.buildCommonCreateArgs(output)
+	if i.SecurityGroups != nil {
+		ids := ""
+		for _, sg := range i.SecurityGroups {
+			if ids != "" {
+				ids = ids + ","
+			}
+			ids = ids + output.ReadVar(sg)
+		}
+		args = append(args, "--security-groups", ids)
+	}
+	if i.IAMInstanceProfile != nil {
+		args = append(args, "--iam-instance-profile", i.IAMInstanceProfile.Name)
 	}
 	return args
 }
@@ -131,7 +155,7 @@ func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	if existing == nil {
 		glog.V(2).Info("instance not found; will create: ", i)
 		args := []string{"run-instances"}
-		args = append(args, i.buildInstanceConfigArgs(output)...)
+		args = append(args, i.buildEC2CreateArgs(output)...)
 
 		args = append(args, "--query", "Instances[0].InstanceId")
 
