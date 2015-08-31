@@ -118,7 +118,7 @@ func (i *Instance) String() string {
 	return fmt.Sprintf("Instance (name=%s)", i.NameTag)
 }
 
-func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
+func (i *Instance) findExisting(cloud *AWSCloud) (*ec2.Instance, error) {
 	var existing *ec2.Instance
 
 	filters := cloud.BuildFilters()
@@ -129,7 +129,7 @@ func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 
 	response, err := cloud.ec2.DescribeInstances(request)
 	if err != nil {
-		return fmt.Errorf("error listing instances: %v", err)
+		return nil, fmt.Errorf("error listing instances: %v", err)
 	}
 
 	if response != nil {
@@ -149,6 +149,31 @@ func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		}
 	}
 
+	return existing, nil
+}
+
+func (i *Instance) Destroy(cloud *AWSCloud, output *BashTarget) error {
+	existing, err := i.findExisting(cloud)
+	if err != nil {
+		return err
+	}
+
+	if existing != nil {
+		glog.V(2).Info("Found instance; will delete: ", i)
+		args := []string{"terminate-instances"}
+		args = append(args, "--instance-ids", aws.StringValue(existing.InstanceId))
+
+		output.AddEC2Command(args...).AssignTo(i)
+	}
+
+	return nil
+}
+
+func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
+	existing, err := i.findExisting(cloud)
+	if err != nil {
+		return err
+	}
 	// TODO: Validate existing
 
 	output.CreateVar(i)
