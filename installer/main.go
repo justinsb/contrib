@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 )
 
@@ -190,6 +191,7 @@ func (s *Subnet) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 
 type AWSCloud struct {
 	region      string
+	s3          *s3.S3
 	iam         *iam.IAM
 	ec2         *ec2.EC2
 	autoscaling *autoscaling.AutoScaling
@@ -200,6 +202,7 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	c := &AWSCloud{region: region}
 	config := aws.NewConfig().WithRegion(region)
 	c.ec2 = ec2.New(config)
+	c.s3 = s3.New(config)
 	c.iam = iam.New(config)
 	c.autoscaling = autoscaling.New(config)
 	c.tags = tags
@@ -419,6 +422,22 @@ func (t *BashTarget) AddAutoscalingCommand(args ...string) *BashCommand {
 	return t.AddCommand(cmd)
 }
 
+func (t *BashTarget) AddS3Command(region string, args ...string) *BashCommand {
+	cmd := &BashCommand{parent: t}
+	cmd.args = []string{"aws", "s3", "--region", region}
+	cmd.args = append(cmd.args, args...)
+
+	return t.AddCommand(cmd)
+}
+
+func (t *BashTarget) AddS3APICommand(region string, args ...string) *BashCommand {
+	cmd := &BashCommand{parent: t}
+	cmd.args = []string{"aws", "s3api", "--region", region}
+	cmd.args = append(cmd.args, args...)
+
+	return t.AddCommand(cmd)
+}
+
 func (t *BashTarget) AddIAMCommand(args ...string) *BashCommand {
 	cmd := &BashCommand{parent: t}
 	cmd.args = t.iamArgs
@@ -539,11 +558,11 @@ func (t *BashTarget) AddResource(resource Resource) (string, error) {
 	}
 
 	switch r := resource.(type) {
+	case *FileResource:
+		return r.Path, nil
 	default:
 		log.Fatal("unknown resource type: ", r)
 		return "", fmt.Errorf("unknown resource type: %v", r)
-	case FileResource:
-		return r.Path, nil
 	}
 }
 
@@ -589,16 +608,32 @@ func staticResource(key string) Resource {
 	return &FileResource{Path: p}
 }
 
+func findKubernetesTarGz() Resource {
+	// TODO: Bash script has a fallback procedure
+	path := "_output/release-tars/kubernetes-server-linux-amd64.tar.gz"
+	return &FileResource{Path: path}
+}
+
+func findSaltTarGz() Resource {
+	// TODO: Bash script has a fallback procedure
+	path := "_output/release-tars/kubernetes-salt.tar.gz"
+	return &FileResource{Path: path}
+}
+
 func main() {
 	var config Configuration
 	var masterVolumeSize int
 	var volumeType string
+	var s3BucketName string
+	var s3Region string
 
 	var minionCount int
 
 	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
 
 	flag.StringVar(&config.Zone, "az", "us-east-1b", "AWS availability zone")
+	flag.StringVar(&s3BucketName, "s3-bucket", "", "S3 bucket for upload of artifacts")
+	flag.StringVar(&s3Region, "s3-region", "", "Region in which to create the S3 bucket (if it does not exist)")
 	flag.BoolVar(&config.EnableClusterUI, "enable-cluster-ui", true, "Enable cluster UI")
 	flag.BoolVar(&config.EnableClusterDNS, "enable-cluster-dns", true, "Enable cluster DNS")
 	flag.BoolVar(&config.EnableClusterLogging, "enable-cluster-logging", true, "Enable cluster logging")
@@ -639,6 +674,15 @@ func main() {
 	}
 	region := az[:len(az)-1]
 
+	if s3BucketName == "" {
+		// TODO: Implement the generation logic
+		glog.Fatal("s3-bucket is required (for now!)")
+	}
+
+	if s3Region == "" {
+		s3Region = region
+	}
+
 	// Required to work with autoscaling minions
 	config.AllocateNodeCIDRs = true
 
@@ -648,12 +692,10 @@ func main() {
 	config.InstancePrefix = instancePrefix
 	masterInternalIP := "172.20.0.9"
 	config.SaltMaster = masterInternalIP
+	config.MasterInternalIP = masterInternalIP
 	nodeInstancePrefix := instancePrefix + "-minion"
 	config.NodeInstancePrefix = nodeInstancePrefix
 	config.MasterName = instancePrefix + "-master"
-
-	config.ServerBinaryTarURL = serverBinaryTarURL
-	config.SaltTarURL = saltTarURL
 
 	config.KubeUser = "admin"
 	config.KubePassword = randomToken(16)
@@ -685,6 +727,42 @@ func main() {
 	}
 
 	instanceType := "m3.medium"
+
+	tags := map[string]string{"KubernetesCluster": clusterID}
+	cloud := NewAWSCloud(region, tags)
+
+	target := NewBashTarget(cloud)
+
+	s3Bucket := &S3Bucket{
+		Name:         s3BucketName,
+		CreateRegion: s3Region,
+	}
+
+	s3KubernetesFile := &S3File{
+		Bucket: s3Bucket,
+		Key:    "devel/kubernetes-server-linux-amd64.tar.gz",
+		Source: findKubernetesTarGz(),
+		Public: true,
+	}
+
+	s3SaltFile := &S3File{
+		Bucket: s3Bucket,
+		Key:    "devel/kubernetes-salt.tar.gz",
+		Source: findSaltTarGz(),
+		Public: true,
+	}
+
+	s3Resources := []BashRenderable{
+		s3Bucket,
+		s3KubernetesFile,
+		s3SaltFile,
+	}
+
+	glog.Info("Processing S3 resources")
+	renderItems(s3Resources, cloud, target)
+
+	config.ServerBinaryTarURL = s3KubernetesFile.PublicURL()
+	config.SaltTarURL = s3SaltFile.PublicURL()
 
 	iamMasterRole := &IAMRole{
 		Name:               "kubernetes-master",
@@ -825,24 +903,21 @@ func main() {
 	// HTTPS to the master is allowed (for API access)
 	resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 443, 443))
 
-	tags := map[string]string{"KubernetesCluster": clusterID}
-	cloud := NewAWSCloud(region, tags)
-
-	target := NewBashTarget(cloud)
-
-	glog.Info("Starting")
-	for _, resource := range resources {
-		glog.Info("rendering ", resource)
-		err := resource.RenderBash(cloud, target)
-		if err != nil {
-			glog.Fatalf("error rendering resource (%v): %v", err)
-		}
-	}
-
+	glog.Info("Processing main resources")
+	renderItems(resources, cloud, target)
 	target.DebugDump()
 
 	err = target.PrintShellCommands(os.Stdout)
 	if err != nil {
 		glog.Fatal("error building shell commands: %v", err)
+	}
+}
+func renderItems(items []BashRenderable, cloud *AWSCloud, target *BashTarget) {
+	for _, resource := range items {
+		glog.Info("rendering ", resource)
+		err := resource.RenderBash(cloud, target)
+		if err != nil {
+			glog.Fatalf("error rendering resource (%v): %v", err)
+		}
 	}
 }

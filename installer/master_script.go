@@ -81,10 +81,8 @@ func (m *MinionScript) Write(w io.Writer) error {
 	// We send this to the ami as a startup script in the user-data field.  Requires a compatible ami
 	s.WriteString("#! /bin/bash\n")
 
-	s.SetVar("SALT_MASTER", m.Config.MasterInternalIP)
-
+	s.SetVar("SALT_MASTER", m.Config.SaltMaster)
 	s.SetVar("DOCKER_OPTS", m.Config.DockerOptions)
-
 	s.SetVar("DOCKER_STORAGE", m.Config.DockerStorage)
 
 	s.CopyTemplate("common.sh")
