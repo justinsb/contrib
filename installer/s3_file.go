@@ -1,7 +1,12 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -64,21 +69,43 @@ func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 
 	needToUpload := true
 
-	if existing != nil {
-		// TODO: Only upload if changed
-		glog.Info("etag matching not yet implemented")
+	localPath, err := output.AddResource(f.Source)
+	if err != nil {
+		return err
 	}
 
-	if needToUpload {
-		localPath, err := output.AddResource(f.Source)
+	if existing != nil {
+		hasher := md5.New()
+		f, err := os.Open(localPath)
 		if err != nil {
 			return err
 		}
-
-		args := []string{"cp"}
-		args = append(args, localPath)
-		args = append(args, "s3://"+f.Bucket.Name+"/"+f.Key)
-		output.AddS3Command(region, args...)
+		defer func() {
+			err := f.Close()
+			if err != nil {
+				glog.Warning("error closing local resource: ", err)
+			}
+		}()
+		if _, err := io.Copy(hasher, f); err != nil {
+			return fmt.Errorf("error while hashing local file: %v", err)
+		}
+		localHash := hex.EncodeToString(hasher.Sum(nil))
+		s3Hash := aws.StringValue(existing.ETag)
+		s3Hash = strings.Replace(s3Hash, "\"", "", -1)
+		if localHash == s3Hash {
+			glog.V(2).Info("s3 files match; skipping upload")
+			needToUpload = false
+		} else {
+			glog.V(2).Infof("s3 file mismatch; will upload (%s vs %s)", localHash, s3Hash)
+		}
+	}
+	if needToUpload {
+		// We use put-object instead of cp so that we don't do multipart, so the etag is the simple md5
+		args := []string{"put-object"}
+		args = append(args, "--bucket", f.Bucket.Name)
+		args = append(args, "--key", f.Key)
+		args = append(args, "--body", localPath)
+		output.AddS3APICommand(region, args...)
 	}
 
 	publicURL := ""
