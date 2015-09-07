@@ -70,7 +70,8 @@ func (s *ScriptWriter) CopyTemplate(key string, replacements map[string]string) 
 			continue
 		}
 
-		// Hack to get under 16KB limit
+		// This is a workaround to get under the 16KB limit for instance-data,
+		// until we move more functionality into the bootstrap program
 		reString := regexp.QuoteMeta("'$(echo \"$") + "(\\w*)" + regexp.QuoteMeta("\" | sed -e \"s/'/''/g\")'")
 		re, err := regexp.Compile(reString)
 		if err != nil {
