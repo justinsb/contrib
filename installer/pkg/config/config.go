@@ -1,17 +1,33 @@
-package main
+package config
+
+import (
+	"encoding/json"
+
+	"github.com/golang/glog"
+)
 
 type Configuration struct {
-	ClusterID          string
-	MasterInternalIP   string
+	CloudProvider       string
+	CloudProviderConfig string
+
+	ClusterID string
+
+	MasterInternalIP string
+	MasterVolume     string
+	MasterCIDR       string
+
 	InstancePrefix     string
 	NodeInstancePrefix string
 	ClusterIPRange     string
 	AllocateNodeCIDRs  bool
+
 	ServerBinaryTarURL string
 	SaltTarURL         string
-	Zone               string
-	KubeUser           string
-	KubePassword       string
+	BootstrapURL       string
+
+	Zone         string
+	KubeUser     string
+	KubePassword string
 
 	SaltMaster string
 	MasterName string
@@ -32,8 +48,6 @@ type Configuration struct {
 
 	AdmissionControl string
 
-	MasterIPRange string
-
 	KubeletToken   string
 	KubeProxyToken string
 
@@ -41,4 +55,12 @@ type Configuration struct {
 	DockerStorage string
 
 	MasterExtraSans []string
+}
+
+func (c *Configuration) AsJson() string {
+	j, err := json.Marshal(c)
+	if err != nil {
+		glog.Fatalf("error marshalling configuration to JSON: %v", err)
+	}
+	return string(j)
 }

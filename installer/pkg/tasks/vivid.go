@@ -1,4 +1,4 @@
-package main
+package tasks
 
 type DistroVivid struct {
 }
