@@ -204,6 +204,21 @@ func main() {
 	config.SaltTarURL = s3SaltFile.PublicURL()
 	config.BootstrapURL = s3BootstrapFile.PublicURL()
 
+	masterPV := &tasks.PersistentVolume{
+		AZ:         az,
+		Size:       masterVolumeSize,
+		VolumeType: volumeType,
+		NameTag:    clusterID + "-master-pd",
+	}
+
+	glog.Info("Processing master volume resource")
+	masterPVResources := []tasks.BashRenderable{
+		masterPV,
+	}
+	renderItems(masterPVResources, cloud, target)
+
+	config.MasterVolume = target.ReadVar(masterPV)
+
 	iamMasterRole := &tasks.IAMRole{
 		Name:               "kubernetes-master",
 		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-role.json"),
@@ -246,13 +261,6 @@ func main() {
 		Name:        "kubernetes-minion-" + clusterID,
 		Description: "Security group for minion nodes",
 		VPC:         vpc}
-
-	masterPV := &tasks.PersistentVolume{
-		AZ:         az,
-		Size:       masterVolumeSize,
-		VolumeType: volumeType,
-		NameTag:    clusterID + "-master-pd",
-	}
 
 	masterUserData := &tasks.MasterScript{
 		Config: &config,
@@ -324,7 +332,6 @@ func main() {
 		sshKey, vpc, subnet, igw,
 		routeTable, route,
 		masterSG, minionSG,
-		masterPV,
 		masterInstance,
 
 		minionConfiguration,
