@@ -100,7 +100,7 @@ func (s *ScriptWriter) WriteHereDoc(p string, contents string) {
 		// TODO: Escaping?
 		s.WriteString(line + "\n")
 	}
-	s.WriteString("E_O_F")
+	s.WriteString("E_O_F\n\n")
 }
 
 func (m *MinionScript) Prefix() string {
@@ -196,6 +196,8 @@ func (m *MasterScript) Write(w io.Writer) error {
 	s.WriteString("mkdir -p /etc/kubernetes\n")
 	s.WriteString("download-or-bust \"" + m.Config.BootstrapURL + "\"\n")
 	s.WriteHereDoc("/etc/kubernetes/config.json", m.Config.AsJson())
+	s.WriteString("chmod +x kubernetes-bootstrap\n")
+	s.WriteString("./kubernetes-bootstrap -v=2\n")
 
 	s.CopyTemplate("format-disks.sh", replacements)
 	s.CopyTemplate("setup-master-pd.sh", replacements)

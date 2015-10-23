@@ -35,7 +35,7 @@ func findSaltTarGz() tasks.Resource {
 }
 
 func findBootstrap() tasks.Resource {
-	path := "bin/installer"
+	path := "bin/bootstrap"
 	return &tasks.FileResource{Path: path}
 }
 
