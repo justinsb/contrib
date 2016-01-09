@@ -14,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -199,10 +200,10 @@ type AWSCloud struct {
 func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	c := &AWSCloud{region: region}
 	config := aws.NewConfig().WithRegion(region)
-	c.ec2 = ec2.New(config)
-	c.s3 = s3.New(config)
-	c.iam = iam.New(config)
-	c.autoscaling = autoscaling.New(config)
+	c.ec2 = ec2.New(session.New(), config)
+	c.s3 = s3.New(session.New(), config)
+	c.iam = iam.New(session.New(), config)
+	c.autoscaling = autoscaling.New(session.New(), config)
 	c.tags = tags
 	return c
 }
