@@ -4,6 +4,7 @@ import (
 	"github.com/kubernetes/contrib/installer/k8sconfig/debianautoupgrades"
 	"github.com/kubernetes/contrib/installer/k8sconfig/docker"
 	"github.com/kubernetes/contrib/installer/k8sconfig/kubeclienttools"
+	"github.com/kubernetes/contrib/installer/k8sconfig/kubelet"
 	"github.com/kubernetes/contrib/installer/k8sconfig/kubenodeunpacker"
 	"github.com/kubernetes/contrib/installer/k8sconfig/kubeproxy"
 	"github.com/kubernetes/contrib/installer/k8sconfig/logrotate"

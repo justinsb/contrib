@@ -10,19 +10,27 @@ import (
 type OS struct {
 	redhat bool
 	debian bool
+	ubuntu bool
+
+	codename string
 }
 
 func (o *OS) init() error {
-	lsbRelease, err := runLsbRelease("-i")
+	distributor, err := runLsbRelease("-i")
 	if err != nil {
 		return err
 	}
 
-	switch lsbRelease {
+	switch distributor {
 	case "Debian":
 		o.debian = true
 	default:
-		panic("Unknown lsb_release " + lsbRelease)
+		panic("Unknown lsb_release distributor " + distributor)
+	}
+
+	o.codename, err = runLsbRelease("-c")
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -44,4 +52,12 @@ func (o *OS) IsRedhat() bool {
 
 func (o *OS) IsDebian() bool {
 	return o.debian
+}
+
+func (o *OS) IsUbuntu() bool {
+	return o.ubuntu
+}
+
+func (o *OS) IsUbuntuVivid() bool {
+	return o.IsUbuntu() && o.codename == "vivid"
 }

@@ -3,8 +3,7 @@ package fi
 import "github.com/golang/glog"
 
 type Cloud struct {
-	aws bool
-	gce bool
+	ProviderID string
 }
 
 func (c *Cloud) init() error {
@@ -15,17 +14,19 @@ func (c *Cloud) init() error {
 	// curl http://169.254.169.254/
 	glog.Warning("Cloud detection hard-coded")
 
+	c.ProviderID = "aws"
+
 	return nil
 }
 
 func (c *Cloud) IsAWS() bool {
-	return true
+	return c.ProviderID == "aws"
 }
 
 func (c *Cloud) IsGCE() bool {
-	return false
+	return c.ProviderID == "gce"
 }
 
 func (c *Cloud) IsVagrant() bool {
-	return false
+	return c.ProviderID == "vagrant"
 }

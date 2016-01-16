@@ -50,7 +50,17 @@ func (c *Context) Cloud() *Cloud {
 
 func (c *Context) Get(key string) string {
 	glog.Warningf("variables not yet implemented: %v", key)
-	return ""
+	panic("variables not yet implemented")
+}
+
+func (c *Context) GetBool(key string) bool {
+	glog.Warningf("variables not yet implemented: %v", key)
+	panic("variables not yet implemented")
+}
+
+func (c *Context) GetInt(key string) int {
+	glog.Warningf("variables not yet implemented: %v", key)
+	panic("variables not yet implemented")
 }
 
 func (c *Context) Add(unit Unit) {

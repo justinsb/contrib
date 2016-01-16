@@ -49,10 +49,14 @@ func main() {
 		glog.Fatalf("unable to read configuration: %v", err)
 	}
 
-	c := fi.NewContext()
+	c, err := fi.NewContext()
+	if err != nil {
+		glog.Fatalf("error building context: %v", err)
+	}
+
 	k8sconfig.Add(c)
 
-	err = c.Run()
+	err = c.Configure()
 	if err != nil {
 		glog.Fatalf("error running configuration: %v", err)
 	}
