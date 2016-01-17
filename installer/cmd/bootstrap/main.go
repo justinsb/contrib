@@ -34,7 +34,7 @@ func (b *Bootstrap) ReadConfig(configPath string) error {
 }
 
 func main() {
-	configPath := "/etc/kubernetes/config.json"
+	configPath := "/etc/kubernetes/config.yaml"
 
 	flag.StringVar(&configPath, "config", configPath, "Path to kubernetes config file")
 
@@ -42,21 +42,31 @@ func main() {
 
 	flag.Parse()
 
-	var b Bootstrap
+	/*
 
-	err := b.ReadConfig(configPath)
+		var b Bootstrap
+			err := b.ReadConfig(configPath)
+			if err != nil {
+				glog.Fatalf("unable to read configuration: %v", err)
+			}
+	*/
+
+	config := &fi.SimpleConfig{}
+	err := config.Read(configPath)
 	if err != nil {
-		glog.Fatalf("unable to read configuration: %v", err)
+		glog.Fatalf("error reading configuration: %v", err)
 	}
 
-	c, err := fi.NewContext()
+	c, err := fi.NewContext(config)
 	if err != nil {
 		glog.Fatalf("error building context: %v", err)
 	}
 
-	k8sconfig.Add(c)
+	bc := c.NewBuildContext()
+	bc.Add(&k8sconfig.Kubernetes{})
 
-	err = c.Configure()
+	rc := c.NewRunContext()
+	err = rc.Configure()
 	if err != nil {
 		glog.Fatalf("error running configuration: %v", err)
 	}

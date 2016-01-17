@@ -5,7 +5,11 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/packages"
 )
 
-func addBase(c *fi.Context) {
+type Base struct {
+	fi.StructuralUnit
+}
+
+func (b *Base) Add(c *fi.BuildContext) {
 	c.Add(packages.Installed("curl"))
 	if c.OS().IsRedhat() {
 		c.Add(packages.Installed("python"))

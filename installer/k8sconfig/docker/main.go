@@ -10,17 +10,23 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/sysctl"
 )
 
-func Add(context *fi.Context) {
-	context.Add(packages.Installed("bridge-utils"))
+type Docker struct {
+	fi.StructuralUnit
 
-	context.Add(sysctl.Set("net.ipv4.ip_forward", "1"))
+	DockerOpts string
+}
 
-	d := &packages.Package{
+func (d *Docker) Add(c *fi.BuildContext) {
+	c.Add(packages.Installed("bridge-utils"))
+
+	c.Add(sysctl.Set("net.ipv4.ip_forward", "1"))
+
+	p := &packages.Package{
 		Name: "lxc-docker-1.7.1",
 	}
-	context.Add(d)
+	c.Add(p)
 
-	args := context.Get("docker_opts")
+	args := d.DockerOpts
 	//{% set e2e_opts = '' -%}
 	//{% if pillar.get('e2e_storage_test_environment', '').lower() == 'true' -%}
 	//{% set e2e_opts = '-s devicemapper' -%}
@@ -49,5 +55,5 @@ func Add(context *fi.Context) {
 			CoreDump:  math.MaxUint64,
 		},
 	}
-	context.Add(s)
+	c.Add(s)
 }

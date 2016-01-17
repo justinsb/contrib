@@ -26,7 +26,7 @@ func (s *Sysctl) buildSysctlFile() (string, error) {
 	return fmt.Sprintf("%s = %s", s.Name, s.Value), nil
 }
 
-func (s *Sysctl) Configure(c *fi.Context) error {
+func (s *Sysctl) Configure(c *fi.RunContext) error {
 	sysctlFile := files.New()
 	sysctlFile.Path = path.Join("/etc/sysctl.d", "99-"+s.Name+".conf")
 	sysctlFile.Contents = s.buildSysctlFile

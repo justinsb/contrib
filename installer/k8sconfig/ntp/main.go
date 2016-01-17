@@ -6,7 +6,11 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/services"
 )
 
-func Add(context *fi.Context) {
-	context.Add(packages.Installed("ntp"))
-	context.Add(services.Running("ntp"))
+type Ntp struct {
+	fi.StructuralUnit
+}
+
+func (n *Ntp) Add(c *fi.BuildContext) {
+	c.Add(packages.Installed("ntp"))
+	c.Add(services.Running("ntp"))
 }

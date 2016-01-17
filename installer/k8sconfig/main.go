@@ -12,12 +12,16 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/fi"
 )
 
-func Add(c *fi.Context) {
-	addBase(c)
-	debianautoupgrades.Add(c)
+type Kubernetes struct {
+	fi.StructuralUnit
+}
+
+func (k *Kubernetes) Add(c *fi.BuildContext) {
+	c.Add(&Base{})
+	c.Add(&debianautoupgrades.DebianAutoUpgrades{})
 	//salthelpers.Add(c)
 	if c.Cloud().IsAWS() {
-		ntp.Add(c)
+		c.Add(&ntp.Ntp{})
 	}
 	/*{% if pillar.get('e2e_storage_test_environment', '').lower() == 'true' %}
 	  - e2e
@@ -26,23 +30,23 @@ func Add(c *fi.Context) {
 
 	if c.HasRole("kubernetes-pool") {
 		// TODO: match: grain
-		docker.Add(c)
+		c.Add(&docker.Docker{})
 		/*{% if pillar.get('network_provider', '').lower() == 'flannel' %}
 		  - flannel
 		  {% endif %}
 		*/
 		// safe_format_and_mount is now unused (?) helpers.Add(c)
 		// cadvisor is now part of kubelet cadvisor.Add(c)
-		kubeclienttools.Add(c)
-		kubenodeunpacker.Add(c)
-		kubelet.Add(c)
+		c.Add(&kubeclienttools.KubeClientTools{})
+		c.Add(&kubenodeunpacker.KubeNodeUnpacker{})
+		c.Add(&kubelet.Kubelet{})
 		/*{% if pillar.get('network_provider', '').lower() == 'opencontrail' %}
 		    - opencontrail-networking-minion
 		    {% else %}
 		 - kube-proxy
 			{% endif %}
 		*/
-		kubeproxy.Add(c)
+		c.Add(&kubeproxy.KubeProxy{})
 
 		/*
 			{% if pillar.get('enable_node_logging', '').lower() == 'true' and pillar['logging_destination'] is defined %}
@@ -60,7 +64,7 @@ func Add(c *fi.Context) {
 				  {% endif %}
 		*/
 
-		logrotate.Add(c)
+		c.Add(&logrotate.LogRotate{})
 		// Not for systemd
 		//supervisor.Add(c)
 	}

@@ -21,6 +21,8 @@ func Running(name string) *Service {
 }
 
 type Service struct {
+	fi.SystemUnit
+
 	Name string
 
 	Description   string
@@ -145,7 +147,7 @@ func (s *Service) envFilePath() string {
 	return path.Join("/etc/sysconfig", s.Name)
 }
 
-func (s *Service) Configure(context *fi.Context) error {
+func (s *Service) Configure(context *fi.RunContext) error {
 	if s.Exec != "" {
 		// TODO: Expose tree structure
 		unitfile := files.New()

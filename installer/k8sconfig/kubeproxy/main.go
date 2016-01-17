@@ -5,18 +5,29 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/files"
 )
 
-func Add(context *fi.Context) {
-	context.Add(files.Path("/var/lib/kube-proxy/kubeconfig").WithMode(0400).DoTouch())
-	context.Add(files.Path("/var/log/kube-proxy.log").DoTouch())
+type KubeProxy struct {
+	fi.StructuralUnit
 
-	context.Add(files.Path("/etc/kubernetes/manifests/kube-proxy.manifest").WithContents(func() (string, error) { return buildManifest(context) }))
+	ApiServers            string
+	LogLevel              string
+	KubeproxyTestArgs     string
+	KubeproxyTestLogLevel string
+	KubeDockerRegistry    string
+	KubeproxyDockerTag    string `id:"kube-proxy_docker_tag"`
 }
 
-func buildManifest(c *fi.Context) (string, error) {
+func (k *KubeProxy) Add(c *fi.BuildContext) {
+	c.Add(files.Path("/var/lib/kube-proxy/kubeconfig").WithMode(0400).DoTouch())
+	c.Add(files.Path("/var/log/kube-proxy.log").DoTouch())
+
+	c.Add(files.Path("/etc/kubernetes/manifests/kube-proxy.manifest").WithContents(func() (string, error) { return k.buildManifest(c) }))
+}
+
+func (k *KubeProxy) buildManifest(c *fi.BuildContext) (string, error) {
 	kubeconfig := "--kubeconfig=/var/lib/kube-proxy/kubeconfig"
 	var api_servers string
-	if c.Get("api_servers") != "" {
-		api_servers = "--master=https://" + c.Get("api_servers")
+	if k.ApiServers != "" {
+		api_servers = "--master=https://" + k.ApiServers
 	} else {
 		panic("api_servers empty not implemented")
 		//{% set ips = salt['mine.get']('roles:kubernetes-master', 'network.ip_addrs', 'grain').values() -%}
@@ -31,11 +42,11 @@ func buildManifest(c *fi.Context) (string, error) {
 		api_servers += ":6443"
 	}
 
-	test_args := c.Get("kubeproxy_test_args")
+	test_args := k.KubeproxyTestArgs
 
-	log_level := c.Get("log_level")
-	if c.Get("kubeproxy_test_log_level") != "" {
-		log_level = c.Get("kubeproxy_test_log_level")
+	log_level := k.LogLevel
+	if k.KubeproxyTestLogLevel != "" {
+		log_level = k.KubeproxyTestLogLevel
 	}
 
 	// TODO: Helper for adding args
@@ -60,7 +71,8 @@ func buildManifest(c *fi.Context) (string, error) {
 	sb.Append("  hostNetwork: true\n")
 	sb.Append("  containers:\n")
 	sb.Append("  - name: kube-proxy\n")
-	sb.Append("    image: {{pillar['kube_docker_registry']}}/kube-proxy:{{pillar['kube-proxy_docker_tag']}}\n")
+	//sb.Append("    image: {{pillar['kube_docker_registry']}}/kube-proxy:{{pillar['kube-proxy_docker_tag']}}\n")
+	sb.Append("    image: " + k.KubeDockerRegistry + "/kube-proxy:" + k.KubeproxyDockerTag + "\n")
 	sb.Append("    command:\n")
 	sb.Append("    - /bin/sh\n")
 	sb.Append("    - -c\n")

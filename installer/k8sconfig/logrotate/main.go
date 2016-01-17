@@ -8,17 +8,21 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/packages"
 )
 
-func Add(context *fi.Context) {
-	context.Add(packages.Installed("logrotate"))
+type LogRotate struct {
+	fi.StructuralUnit
+}
+
+func (l *LogRotate) Add(c *fi.BuildContext) {
+	c.Add(packages.Installed("logrotate"))
 
 	files := []string{"kube-scheduler", "kube-proxy", "kubelet", "kube-apiserver", "kube-controller-manager", "kube-addons", "docker"}
 	for _, f := range files {
-		context.Add(&logRotate{Key: f})
+		c.Add(&LogRotateFile{Key: f})
 	}
 
-	context.Add(&logRotate{Key: "docker-containers", LogPath: "/var/lib/docker/containers/*/*-json.log"})
+	c.Add(&LogRotateFile{Key: "docker-containers", LogPath: "/var/lib/docker/containers/*/*-json.log"})
 
-	context.Add(buildLogrotateCron())
+	c.Add(buildLogrotateCron())
 }
 
 func buildLogrotateCron() *files.File {
@@ -28,12 +32,12 @@ logrotate /etc/logrotate.conf`
 	return files.Path("/etc/cron.hourly/logrotate").WithContents(fi.StaticContent(script)).WithMode(0755)
 }
 
-type logRotate struct {
+type LogRotateFile struct {
 	Key     string
 	LogPath string
 }
 
-func (l *logRotate) buildConf() (string, error) {
+func (l *LogRotateFile) buildConf() (string, error) {
 	var sb fi.StringBuilder
 
 	logPath := l.LogPath
@@ -54,7 +58,7 @@ func (l *logRotate) buildConf() (string, error) {
 	return sb.String(), sb.Error()
 }
 
-func (l *logRotate) Configure(c *fi.Context) error {
+func (l *LogRotateFile) Configure(c *fi.RunContext) error {
 	confPath := path.Join("/etc/logrotate.d", l.Key)
 	confFile := files.Path(confPath).WithContents(l.buildConf)
 	err := confFile.Configure(c)

@@ -47,8 +47,8 @@ type Package struct {
 	Name string
 }
 
-func (p *Package) Configure(context *fi.Context) error {
-	state, err := context.GetState(stateKey, func() (interface{}, error) { return findInstalledPackages() })
+func (p *Package) Configure(c *fi.RunContext) error {
+	state, err := c.GetState(stateKey, func() (interface{}, error) { return findInstalledPackages() })
 	if err != nil {
 		return err
 	}

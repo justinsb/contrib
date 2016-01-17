@@ -44,7 +44,7 @@ type File struct {
 	Touch    bool
 }
 
-func (f *File) Configure(c *fi.Context) error {
+func (f *File) Configure(c *fi.RunContext) error {
 	if f.Touch {
 		// TODO: Only write if not exists
 		// also handle empty Contents

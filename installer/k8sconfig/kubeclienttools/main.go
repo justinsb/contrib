@@ -5,6 +5,10 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/files"
 )
 
-func Add(context *fi.Context) {
-	context.Add(files.Path("/usr/local/bin/kubectl").WithContents(fi.Resource("kubectl")).WithMode(0755))
+type KubeClientTools struct {
+	fi.StructuralUnit
+}
+
+func (k *KubeClientTools) Add(c *fi.BuildContext) {
+	c.Add(files.Path("/usr/local/bin/kubectl").WithContents(fi.Resource("kubectl")).WithMode(0755))
 }

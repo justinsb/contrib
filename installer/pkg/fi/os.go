@@ -3,6 +3,7 @@ package fi
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/golang/glog"
 )
@@ -24,8 +25,10 @@ func (o *OS) init() error {
 	switch distributor {
 	case "Debian":
 		o.debian = true
+	case "Ubuntu":
+		o.ubuntu = true
 	default:
-		panic("Unknown lsb_release distributor " + distributor)
+		panic(fmt.Sprintf("Unknown lsb_release distributor %q", distributor))
 	}
 
 	o.codename, err = runLsbRelease("-c")
@@ -43,7 +46,11 @@ func runLsbRelease(flag string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error running lsb_release: %v: %s", err, string(output))
 	}
-	return string(output), nil
+
+	s := string(output)
+	// Remove any trailing '\n'
+	s = strings.TrimSpace(s)
+	return s, nil
 }
 
 func (o *OS) IsRedhat() bool {

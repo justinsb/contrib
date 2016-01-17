@@ -6,7 +6,11 @@ import (
 	"github.com/kubernetes/contrib/installer/pkg/packages"
 )
 
-func Add(c *fi.Context) {
+type DebianAutoUpgrades struct {
+	fi.StructuralUnit
+}
+
+func (d *DebianAutoUpgrades) Add(c *fi.BuildContext) {
 	if c.OS().IsDebian() {
 		c.Add(packages.Installed("unattended-upgrades"))
 

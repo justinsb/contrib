@@ -88,6 +88,7 @@ func BuildArgs(cmd string, args interface{}) string {
 
 		argValue := ""
 		switch fieldType.Kind() {
+
 		case reflect.Int:
 			{
 				v := fieldValue.Int()
@@ -105,11 +106,38 @@ func BuildArgs(cmd string, args interface{}) string {
 				}
 			}
 
+		case reflect.Bool:
+			{
+				v := fieldValue.Bool()
+				defaultValue := false
+				defaultValueTag := field.Tag.Get("default")
+				if defaultValueTag != "" {
+					var err error
+					defaultValue, err = strconv.ParseBool(defaultValueTag)
+					if err != nil {
+						panic("Unexpected error parsing default value: " + defaultValueTag + " for " + fieldName)
+					}
+				}
+				if v != defaultValue {
+					argValue = strconv.FormatBool(v)
+				}
+			}
+
+		case reflect.String:
+			{
+				v := fieldValue.String()
+				defaultValue := field.Tag.Get("default")
+				if v != defaultValue {
+					argValue = defaultValue
+				}
+			}
+
 		default:
 			panic(fmt.Sprintf("Unhandled field type: %v", fieldType.Kind()))
 		}
 
 		if argValue == "" {
+			// Note .. no way to force an empty string arg currently (probably need another tag)
 			continue
 		}
 
@@ -120,7 +148,7 @@ func BuildArgs(cmd string, args interface{}) string {
 	return cmd + " " + argBuilder.Build()
 }
 
-func buildKubeletCommandLine(c *fi.Context) string {
+func (k *Kubelet) buildKubeletCommandLine(c *fi.BuildContext) string {
 	var args KubeletArgs
 
 	/* TODO:
@@ -143,8 +171,8 @@ func buildKubeletCommandLine(c *fi.Context) string {
 	    {% set api_servers = "--api-servers=https://" + ips[0][0] -%}
 	  {% endif -%}
 	*/
-	if c.Get("api_servers") != "" {
-		args.ApiServers = "https://" + c.Get("api_servers")
+	if k.ApiServers != "" {
+		args.ApiServers = "https://" + k.ApiServers
 	} else {
 		panic("api_servers not set")
 	}
@@ -171,8 +199,8 @@ func buildKubeletCommandLine(c *fi.Context) string {
 		if cloud.IsAWS() || cloud.IsGCE() || cloud.IsVagrant() {
 			// Unless given a specific directive, disable registration for the kubelet
 			// running on the master.
-			if c.Get("kubelet_api_servers") != "" {
-				args.ApiServers = "https://" + c.Get("kubelet_api_servers")
+			if k.KubeletApiServers != "" {
+				args.ApiServers = "https://" + k.KubeletApiServers
 				args.RegisterSchedulable = false
 				args.ReconcileCidr = false
 			} else {
@@ -192,23 +220,23 @@ func buildKubeletCommandLine(c *fi.Context) string {
 
 	args.Config = "/etc/kubernetes/manifests"
 
-	if c.GetBool("enable_manifest_url") {
-		args.ManifestUrl = c.Get("manifest_url")
-		args.ManifestUrlHeader = c.Get("manifest_url_header")
+	if k.EnableManifestUrl {
+		args.ManifestUrl = k.ManifestUrl
+		args.ManifestUrlHeader = k.ManifestUrlHeader
 	}
 
-	args.HostnameOverride = c.Get("hostname_override")
+	args.HostnameOverride = k.HostnameOverride
 
-	if c.GetBool("enable_cluster_dns") {
-		args.ClusterDns = c.Get("dns_server")
-		args.ClusterDomain = c.Get("dns_domain")
+	if k.EnableClusterDns {
+		args.ClusterDns = k.DnsServer
+		args.ClusterDomain = k.DnsDomain
 	}
 
-	args.DockerRoot = c.Get("docker_root")
+	args.DockerRoot = k.DockerRoot
 
-	args.RootDir = c.Get("kubelet_root")
+	args.RootDir = k.KubeletRoot
 
-	args.ConfigureCbr0 = c.GetBool("allocate_node_cidrs")
+	args.ConfigureCbr0 = k.AllocateNodeCidrs
 
 	/*
 	  # The master kubelet cannot wait for the flannel daemon because it is responsible
@@ -233,12 +261,12 @@ func buildKubeletCommandLine(c *fi.Context) string {
 	}
 
 	if c.HasRole("kubernetes-master") {
-		args.PodCidr = c.Get("cbd-cidr")
+		args.PodCidr = k.CbrCidr
 	}
 
-	args.CpuCfsQuota = c.GetBool("enable_cpu_cfs_quota")
+	args.CpuCfsQuota = k.EnableCpuCfsQuota
 
-	if c.Get("kubelet_test_args") != "" {
+	if k.KubeletTestArgs != "" {
 		// args.AddArgs ???
 		panic("kubelet_test_args not implemented")
 		/*
@@ -256,9 +284,9 @@ func buildKubeletCommandLine(c *fi.Context) string {
 	  {% endif -%}
 	*/
 
-	args.Port = c.GetInt("kubelet_port")
+	args.Port = k.KubeletPort
 
-	if c.Get("kubelet_test_log_level") != "" {
+	if k.KubeletTestLogLevel != "" {
 		panic("kubelet_test_log_level not implemented")
 		/*
 		  {% set log_level = pillar['log_level'] -%}
@@ -275,22 +303,44 @@ func buildKubeletCommandLine(c *fi.Context) string {
 	return BuildArgs("/usr/local/bin/kubelet", args)
 }
 
-func Add(context *fi.Context) {
-	context.Add(files.Path("/usr/local/bin/kubelet").WithMode(0755).WithContents(fi.Resource("kubelet")))
+type Kubelet struct {
+	fi.StructuralUnit
+
+	ApiServers          string
+	KubeletApiServers   string
+	EnableManifestUrl   bool
+	ManifestUrl         string
+	ManifestUrlHeader   string
+	HostnameOverride    string
+	EnableClusterDns    bool
+	DnsServer           string
+	DnsDomain           string
+	DockerRoot          string
+	KubeletRoot         string
+	AllocateNodeCidrs   bool
+	CbrCidr             string
+	EnableCpuCfsQuota   bool
+	KubeletTestArgs     string
+	KubeletPort         int
+	KubeletTestLogLevel string
+}
+
+func (k *Kubelet) Add(c *fi.BuildContext) {
+	c.Add(files.Path("/usr/local/bin/kubelet").WithMode(0755).WithContents(fi.Resource("kubelet")))
 
 	// The default here is that this file is blank. If this is the case, the kubelet
 	// won't be able to parse it as JSON and it will not be able to publish events
 	// to the apiserver. You'll see a single error line in the kubelet start up file
 	// about this.
-	context.Add(files.Path("/var/lib/kubelet/kubeconfig").WithMode(0400).WithContents(fi.StaticContent("")))
+	c.Add(files.Path("/var/lib/kubelet/kubeconfig").WithMode(0400).WithContents(fi.StaticContent("")))
 
-	kubeletExec := buildKubeletCommandLine(context)
+	kubeletExec := k.buildKubeletCommandLine(c)
 
 	s := services.Running("kubelet")
 	s.Description = "Kubernetes Kubelet Server"
 	s.Documentation = "https://github.com/GoogleCloudPlatform/kubernetes"
 	s.Exec = kubeletExec
-	context.Add(s)
+	c.Add(s)
 
 	/*{% if pillar.get('is_systemd') %}
 	  {% set environment_file = '/etc/sysconfig/kubelet' %}
