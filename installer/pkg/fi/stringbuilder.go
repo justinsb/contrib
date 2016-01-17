@@ -10,6 +10,10 @@ type StringBuilder struct {
 	//	err error
 }
 
+func (sb *StringBuilder) IsEmpty() bool {
+	return sb.b.Len() == 0
+}
+
 func (sb *StringBuilder) Append(s string) {
 	sb.b.Write([]byte(s))
 }

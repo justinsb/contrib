@@ -47,7 +47,7 @@ type Package struct {
 	Name string
 }
 
-func (p *Package) Configure(c *fi.RunContext) error {
+func (p *Package) Run(c *fi.RunContext) error {
 	state, err := c.GetState(stateKey, func() (interface{}, error) { return findInstalledPackages() })
 	if err != nil {
 		return err
@@ -58,14 +58,20 @@ func (p *Package) Configure(c *fi.RunContext) error {
 		return nil
 	}
 
-	glog.V(2).Infof("Installing package %q", p.Name)
-	cmd := exec.Command("apt-get", "install", "--yes", p.Name)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error installing package %q: %v: %s", p.Name, err, string(output))
-	}
+	if c.IsConfigure() {
+		glog.V(2).Infof("Installing package %q", p.Name)
+		cmd := exec.Command("apt-get", "install", "--yes", p.Name)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error installing package %q: %v: %s", p.Name, err, string(output))
+		}
 
-	packageState.markInstalled(p.Name)
+		packageState.markInstalled(p.Name)
+	} else if c.IsValidate() {
+		c.MarkDirty()
+	} else {
+		panic("Unhandled RunMode")
+	}
 
 	return nil
 }

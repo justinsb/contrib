@@ -44,10 +44,11 @@ func NewContext(config Config) (*Context, error) {
 	return c, nil
 }
 
-func (c *Context) NewRunContext() *RunContext {
+func (c *Context) NewRunContext(runMode RunMode) *RunContext {
 	rc := &RunContext{
 		Context: c,
 		node:    c.root,
+		mode:    runMode,
 	}
 	return rc
 }

@@ -20,21 +20,32 @@ func (l *LogRotate) Add(c *fi.BuildContext) {
 		c.Add(&LogRotateFile{Key: f})
 	}
 
-	c.Add(&LogRotateFile{Key: "docker-containers", LogPath: "/var/lib/docker/containers/*/*-json.log"})
+	c.Add(&LogRotateFile{Key: "docker-containers", MaxSize: "10M", LogPath: "/var/lib/docker/containers/*/*-json.log"})
 
 	c.Add(buildLogrotateCron())
 }
 
 func buildLogrotateCron() *files.File {
 	script := `#!/bin/sh
-logrotate /etc/logrotate.conf`
+logrotate /etc/logrotate.conf
+`
 
 	return files.Path("/etc/cron.hourly/logrotate").WithContents(fi.NewStringResource(script)).WithMode(0755)
 }
 
 type LogRotateFile struct {
+	fi.StructuralUnit
+
 	Key     string
 	LogPath string
+
+	MaxSize string
+}
+
+func (l *LogRotateFile) Add(c *fi.BuildContext) {
+	confPath := path.Join("/etc/logrotate.d", l.Key)
+	confFile := files.Path(confPath).WithContents(l.buildConf())
+	c.Add(confFile)
 }
 
 func (l *LogRotateFile) buildConf() fi.Resource {
@@ -45,26 +56,19 @@ func (l *LogRotateFile) buildConf() fi.Resource {
 		logPath = path.Join("/var/log", l.Key+".log")
 	}
 	sb.Append(logPath + " {\n")
-	sb.Append("\trotate 5\n")
-	sb.Append("\tcopytruncate\n")
-	sb.Append("\tmissingok\n")
-	sb.Append("\tnotifempty\n")
-	sb.Append("\tcompress\n")
-	sb.Append("\tmaxsize 100M\n")
-	sb.Append("\tdaily\n")
-	sb.Append("\tcreate 0644 root root\n")
+	sb.Append("    rotate 5\n")
+	sb.Append("    copytruncate\n")
+	sb.Append("    missingok\n")
+	sb.Append("    notifempty\n")
+	sb.Append("    compress\n")
+	maxSize := l.MaxSize
+	if maxSize == "" {
+		maxSize = "100M"
+	}
+	sb.Append("    maxsize " + maxSize + "\n")
+	sb.Append("    daily\n")
+	sb.Append("    create 0644 root root\n")
 	sb.Append("}\n")
 
 	return sb.AsResource()
-}
-
-func (l *LogRotateFile) Configure(c *fi.RunContext) error {
-	confPath := path.Join("/etc/logrotate.d", l.Key)
-	confFile := files.Path(confPath).WithContents(l.buildConf())
-	err := confFile.Configure(c)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

@@ -3,11 +3,9 @@ package files
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 
-	"github.com/golang/glog"
 	"github.com/kubernetes/contrib/installer/pkg/fi"
 )
 
@@ -53,20 +51,23 @@ func (f *FSResource) WriteTo(out io.Writer) error {
 }
 
 func (r *FSResource) SameContents(path string) (bool, error) {
-	glog.Warningf("TODO: File SameContents comparison is in-memory")
+	if !Exists(path) {
+		return false, nil
+	}
 
-	in, err := r.open()
+	expected, err := r.open()
 	if err != nil {
 		return false, err
 	}
-	defer in.Close()
+	defer expected.Close()
 
-	data, err := ioutil.ReadAll(in)
+	actual, err := os.Open(path)
 	if err != nil {
-		return false, fmt.Errorf("error reading resource %q: %v", r.path, err)
+		return false, err
 	}
+	defer actual.Close()
 
-	return fi.HasContents(path, data)
+	return fi.ReadersEqual(expected, actual)
 }
 
 func (r *FSResource) open() (*os.File, error) {

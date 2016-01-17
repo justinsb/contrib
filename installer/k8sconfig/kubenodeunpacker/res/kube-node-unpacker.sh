@@ -44,4 +44,3 @@ done
 
 # Now exit. After kube-push, salt will notice that the service is down and it
 # will start it and new docker images will be loaded.
-

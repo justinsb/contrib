@@ -45,6 +45,9 @@ func main() {
 	resourcedir := ""
 	flag.StringVar(&resourcedir, "resources", resourcedir, "Directory to scan for resources")
 
+	validate := false
+	flag.BoolVar(&validate, "validate", validate, "Perform validation only")
+
 	flag.Set("alsologtostderr", "true")
 
 	flag.Parse()
@@ -79,8 +82,13 @@ func main() {
 	bc := c.NewBuildContext()
 	bc.Add(&k8sconfig.Kubernetes{})
 
-	rc := c.NewRunContext()
-	err = rc.Configure()
+	runMode := fi.ModeConfigure
+	if validate {
+		runMode = fi.ModeValidate
+	}
+
+	rc := c.NewRunContext(runMode)
+	err = rc.Run()
 	if err != nil {
 		glog.Fatalf("error running configuration: %v", err)
 	}

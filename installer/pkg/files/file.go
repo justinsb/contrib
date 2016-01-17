@@ -46,19 +46,19 @@ type File struct {
 	Touch    bool
 }
 
-func (f *File) Configure(c *fi.RunContext) error {
+func (f *File) Run(c *fi.RunContext) error {
+	exists := Exists(f.Path)
 	if f.Touch {
-		// TODO: Only write if not exists
-		// also handle empty Contents
-		if Exists(f.Path) {
+		// TODO: handle empty Contents
+
+		if exists {
+			glog.Warningf("TODO: Verify mode")
 			glog.V(2).Infof("File exists; won't touch: %q", f.Path)
 			return nil
 		}
 	}
 
-	localFileExists := Exists(f.Path)
-
-	if localFileExists {
+	if exists {
 		same, err := f.Contents.SameContents(f.Path)
 		if err != nil {
 			return fmt.Errorf("error checking contents of %q: %v", f.Path, err)
@@ -69,21 +69,28 @@ func (f *File) Configure(c *fi.RunContext) error {
 		}
 	}
 
-	mode := f.Mode
-	if mode == 0 {
-		mode = defaultMode
-	}
+	if c.IsConfigure() {
+		mode := f.Mode
+		if mode == 0 {
+			mode = defaultMode
+		}
 
-	out, err := os.OpenFile(f.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return fmt.Errorf("error opening file for write %q: %v", f.Path, err)
-	}
-	defer out.Close()
+		out, err := os.OpenFile(f.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+		if err != nil {
+			return fmt.Errorf("error opening file for write %q: %v", f.Path, err)
+		}
+		defer out.Close()
 
-	err = f.Contents.WriteTo(out)
-	if err != nil {
-		return fmt.Errorf("error writing file %q: %v", f.Path, err)
-	}
+		err = f.Contents.WriteTo(out)
+		if err != nil {
+			return fmt.Errorf("error writing file %q: %v", f.Path, err)
+		}
 
-	return nil
+		return nil
+	} else if c.IsValidate() {
+		c.MarkDirty()
+		return nil
+	} else {
+		panic("Unhandled run action")
+	}
 }

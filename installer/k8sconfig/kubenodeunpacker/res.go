@@ -188,8 +188,8 @@ var _escData = map[string]*_escFile{
 
 	"/kube-node-unpacker.sh": {
 		local:   "res/kube-node-unpacker.sh",
-		size:    1532,
-		modtime: 1452441624,
+		size:    1531,
+		modtime: 1453050623,
 		compressed: `
 H4sIAAAJbogA/2xU72/bNhD9rr/i5hTDBiSSna1fFriDl6aY0MIBYndFURQDRZ0kIhSpkScrxtb/fUdK
 +WG7/mBJ5PHdu8d3d/ZDViiTFcI3SXIG17bbO1U3BJfzxWvYNgjv+wKdQUIPq54a6/ipNcQoDw49uh2W
@@ -204,7 +204,7 @@ mrJ7bpcLbik/vnXOPuxTznwCHBGdXL76Pb4xjy9fYPbqXye/zWC5hDl8/ToljzaF75bKB47Xvv23mMUj
 qE9AF5e/HsMeCRMkizuVSuIf/589u/3wSmobGpLPa80+Ym8pglF5bW2XJi/KOmE58nliA4VDcX/1lHFj
 Wwx6+wOpGxH6aKL8uFMKbLlFeNXq3ehj9mUs41mAgyo5+VPeML/YoY9gU+AzEa8Ru9gQPBA9SmtKDwXy
 QpgihG0XmjtYNzI8FEjUPIIYZgRZvE6S0hoMnbC2Q9QrhVVFfGB0S+8bHhPsI55s7BOegoEaNYLGdpy4
-hvlghzAVSlA8ycboURS+grBscDjiEmMKnDzE7fh/AAAA//8UU0iU/AUAAA==
+hvlghzAVSlA8ycboURS+grBscDjiEmMKnDyUJv8HAAD//6XgAiP7BQAA
 `,
 	},
 

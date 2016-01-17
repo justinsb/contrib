@@ -22,6 +22,7 @@ func Running(name string) *Service {
 }
 
 type Service struct {
+	fi.StructuralUnit
 	fi.SystemUnit
 
 	Name string
@@ -74,6 +75,9 @@ type IniFile struct {
 }
 
 func (i *IniFile) StartSection(name string) {
+	if !i.sb.IsEmpty() {
+		i.sb.Append("\n")
+	}
 	i.sb.Appendf("[%s]\n", name)
 }
 
@@ -143,48 +147,67 @@ func (s *Service) envFilePath() string {
 	return path.Join("/etc/sysconfig", s.Name)
 }
 
-func (s *Service) Configure(context *fi.RunContext) error {
+func (s *Service) Add(c *fi.BuildContext) {
 	if s.Exec != "" {
 		// TODO: Expose tree structure
 		unitfile := files.New()
 		unitfile.Path = path.Join("/lib/systemd/system", s.Name+".service")
 		unitfile.Contents = s.buildUnitFile()
-		err := unitfile.Configure(context)
-		if err != nil {
-			return err
-		}
+		c.Add(unitfile)
 
 		if s.Environment != nil {
 			envfile := files.New()
 			envfile.Path = s.envFilePath()
 			envfile.Contents = s.buildEnvFile()
-			err := envfile.Configure(context)
-			if err != nil {
-				return err
-			}
+			c.Add(envfile)
 		}
 
-		// TODO: Only if dirty
-		err = systemctlDaemonReload()
-		if err != nil {
-			return err
-		}
+		c.Add(&systemdDaemonReload{})
 	}
 
+	c.Add(&systemdStartService{Name: s.Name})
+}
+
+type systemdDaemonReload struct {
+	fi.SystemUnit
+}
+
+func (s *systemdDaemonReload) Run(c *fi.RunContext) error {
+	glog.Warningf("Only daemon-reload if dirty")
+	return nil
+}
+
+type systemdStartService struct {
+	fi.SystemUnit
+	Name string
+}
+
+func (s *systemdStartService) Run(c *fi.RunContext) error {
 	state, err := getSystemdServiceState(s.Name)
 	if err != nil {
 		return err
 	}
 
-	if !state.IsRunning() {
+	if state.IsRunning() {
+		glog.V(2).Infof("Service already running: %q", s.Name)
+		return nil
+	}
+
+	if c.IsConfigure() {
 		glog.V(2).Infof("Start service %q", s.Name)
 		cmd := exec.Command("systemctl", "start", s.Name)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("error starting service %q: %v: %s", s.Name, err, string(output))
 		}
+		return nil
+		return nil
+	} else if c.IsValidate() {
+		c.MarkDirty()
+		return nil
+	} else {
+		panic("Unhandled RunMode")
 	}
-	return nil
 }
 
 type SystemdServiceState struct {

@@ -3,9 +3,44 @@ package fi
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 )
+
+func ReadersEqual(l, r io.Reader) (bool, error) {
+	lBuf := make([]byte, 32*1024)
+	rBuf := make([]byte, 32*1024)
+
+	for {
+		nL, err := io.ReadFull(l, lBuf)
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+			return false, err
+		}
+		nR, err := io.ReadFull(r, rBuf)
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+			return false, err
+		}
+
+		if nL != nR {
+			return false, nil
+		}
+
+		if nL == 0 {
+			return true, nil
+		}
+
+		if nL == len(lBuf) {
+			if !bytes.Equal(lBuf, rBuf) {
+				return false, nil
+			}
+		} else {
+			if !bytes.Equal(lBuf[:nL], rBuf[:nR]) {
+				return false, nil
+			}
+		}
+	}
+}
 
 func HasContents(path string, contents []byte) (bool, error) {
 	in, err := os.Open(path)
