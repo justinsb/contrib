@@ -20,10 +20,10 @@ func (k *KubeProxy) Add(c *fi.BuildContext) {
 	c.Add(files.Path("/var/lib/kube-proxy/kubeconfig").WithMode(0400).DoTouch())
 	c.Add(files.Path("/var/log/kube-proxy.log").DoTouch())
 
-	c.Add(files.Path("/etc/kubernetes/manifests/kube-proxy.manifest").WithContents(func() (string, error) { return k.buildManifest(c) }))
+	c.Add(files.Path("/etc/kubernetes/manifests/kube-proxy.manifest").WithContents(k.buildManifest(c)))
 }
 
-func (k *KubeProxy) buildManifest(c *fi.BuildContext) (string, error) {
+func (k *KubeProxy) buildManifest(c *fi.BuildContext) fi.Resource {
 	kubeconfig := "--kubeconfig=/var/lib/kube-proxy/kubeconfig"
 	var api_servers string
 	if k.ApiServers != "" {
@@ -101,5 +101,5 @@ func (k *KubeProxy) buildManifest(c *fi.BuildContext) (string, error) {
 	sb.Append("    name: varlog\n")
 	sb.Append("}\n")
 
-	return sb.String(), sb.Error()
+	return sb.AsResource()
 }

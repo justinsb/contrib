@@ -186,7 +186,7 @@ func FSMustString(useLocal bool, name string) string {
 
 var _escData = map[string]*_escFile{
 
-	"/res/kube-node-unpacker.sh": {
+	"/kube-node-unpacker.sh": {
 		local:   "res/kube-node-unpacker.sh",
 		size:    1532,
 		modtime: 1452441624,
@@ -210,11 +210,6 @@ hvlghzAVSlA8ycboURS+grBscDjiEmMKnDzE7fh/AAAA//8UU0iU/AUAAA==
 
 	"/": {
 		isDir: true,
-		local: "/",
-	},
-
-	"/res": {
-		isDir: true,
-		local: "/res",
+		local: "res",
 	},
 }

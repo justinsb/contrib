@@ -2,9 +2,9 @@ package files
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes/contrib/installer/pkg/fi"
 )
 
@@ -22,7 +22,7 @@ func Path(path string) *File {
 	return f
 }
 
-func (f *File) WithContents(contents fi.ContentsFunction) *File {
+func (f *File) WithContents(contents fi.Resource) *File {
 	f.Contents = contents
 	return f
 }
@@ -38,9 +38,11 @@ func (f *File) DoTouch() *File {
 }
 
 type File struct {
+	fi.SystemUnit
+
 	Path     string
 	Mode     os.FileMode
-	Contents fi.ContentsFunction
+	Contents fi.Resource
 	Touch    bool
 }
 
@@ -48,22 +50,37 @@ func (f *File) Configure(c *fi.RunContext) error {
 	if f.Touch {
 		// TODO: Only write if not exists
 		// also handle empty Contents
-		panic("touch not implemented")
+		if Exists(f.Path) {
+			glog.V(2).Infof("File exists; won't touch: %q", f.Path)
+			return nil
+		}
 	}
 
-	data, err := f.Contents()
-	if err != nil {
-		return fmt.Errorf("error building contents for file %q: %v", f.Path, err)
-	}
+	localFileExists := Exists(f.Path)
 
-	// TODO: Only write if changed
+	if localFileExists {
+		same, err := f.Contents.SameContents(f.Path)
+		if err != nil {
+			return fmt.Errorf("error checking contents of %q: %v", f.Path, err)
+		}
+		if same {
+			glog.Warningf("TODO: Verify mode")
+			return nil
+		}
+	}
 
 	mode := f.Mode
 	if mode == 0 {
 		mode = defaultMode
 	}
 
-	err = ioutil.WriteFile(f.Path, []byte(data), mode)
+	out, err := os.OpenFile(f.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return fmt.Errorf("error opening file for write %q: %v", f.Path, err)
+	}
+	defer out.Close()
+
+	err = f.Contents.WriteTo(out)
 	if err != nil {
 		return fmt.Errorf("error writing file %q: %v", f.Path, err)
 	}

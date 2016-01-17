@@ -6,8 +6,8 @@ import (
 )
 
 type StringBuilder struct {
-	b   bytes.Buffer
-	err error
+	b bytes.Buffer
+	//	err error
 }
 
 func (sb *StringBuilder) Append(s string) {
@@ -23,6 +23,6 @@ func (s *StringBuilder) String() string {
 	return string(s.b.Bytes())
 }
 
-func (s *StringBuilder) Error() error {
-	return s.err
+func (s *StringBuilder) AsResource() Resource {
+	return NewStringResource(string(s.b.Bytes()))
 }

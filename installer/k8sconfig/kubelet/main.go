@@ -326,13 +326,13 @@ type Kubelet struct {
 }
 
 func (k *Kubelet) Add(c *fi.BuildContext) {
-	c.Add(files.Path("/usr/local/bin/kubelet").WithMode(0755).WithContents(fi.Resource("kubelet")))
+	c.Add(files.Path("/usr/local/bin/kubelet").WithMode(0755).WithContents(c.Resource("kubelet")))
 
 	// The default here is that this file is blank. If this is the case, the kubelet
 	// won't be able to parse it as JSON and it will not be able to publish events
 	// to the apiserver. You'll see a single error line in the kubelet start up file
 	// about this.
-	c.Add(files.Path("/var/lib/kubelet/kubeconfig").WithMode(0400).WithContents(fi.StaticContent("")))
+	c.Add(files.Path("/var/lib/kubelet/kubeconfig").WithMode(0400).WithContents(fi.NewStringResource("")))
 
 	kubeletExec := k.buildKubeletCommandLine(c)
 

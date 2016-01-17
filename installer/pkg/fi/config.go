@@ -19,6 +19,12 @@ type SimpleConfig struct {
 
 var _ Config = &SimpleConfig{}
 
+func NewSimpleConfig() *SimpleConfig {
+	return &SimpleConfig{
+		config: make(map[string]string),
+	}
+}
+
 // TODO: Move to class (along with toArgName)?
 func toUnderscore(s string) string {
 	var b bytes.Buffer
@@ -58,12 +64,15 @@ func (c *SimpleConfig) Read(file string) error {
 		if line == "" {
 			continue
 		}
-		tokens := strings.SplitN(line, "=", 2)
+		tokens := strings.SplitN(line, ":", 2)
 		if len(tokens) < 2 {
 			return fmt.Errorf("cannot parse config line %q in file %q", line, file)
 		}
 
-		c.config[tokens[0]] = tokens[1]
+		k := strings.TrimSpace(tokens[0])
+		v := strings.TrimSpace(tokens[1])
+
+		c.config[k] = v
 	}
 
 	if err := scanner.Err(); err != nil {

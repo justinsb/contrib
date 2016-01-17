@@ -29,7 +29,7 @@ func buildLogrotateCron() *files.File {
 	script := `#!/bin/sh
 logrotate /etc/logrotate.conf`
 
-	return files.Path("/etc/cron.hourly/logrotate").WithContents(fi.StaticContent(script)).WithMode(0755)
+	return files.Path("/etc/cron.hourly/logrotate").WithContents(fi.NewStringResource(script)).WithMode(0755)
 }
 
 type LogRotateFile struct {
@@ -37,7 +37,7 @@ type LogRotateFile struct {
 	LogPath string
 }
 
-func (l *LogRotateFile) buildConf() (string, error) {
+func (l *LogRotateFile) buildConf() fi.Resource {
 	var sb fi.StringBuilder
 
 	logPath := l.LogPath
@@ -55,12 +55,12 @@ func (l *LogRotateFile) buildConf() (string, error) {
 	sb.Append("\tcreate 0644 root root\n")
 	sb.Append("}\n")
 
-	return sb.String(), sb.Error()
+	return sb.AsResource()
 }
 
 func (l *LogRotateFile) Configure(c *fi.RunContext) error {
 	confPath := path.Join("/etc/logrotate.d", l.Key)
-	confFile := files.Path(confPath).WithContents(l.buildConf)
+	confFile := files.Path(confPath).WithContents(l.buildConf())
 	err := confFile.Configure(c)
 	if err != nil {
 		return err

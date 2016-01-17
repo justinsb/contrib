@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"strings"
 
 	"k8s.io/kubernetes/pkg/cloudprovider"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/kubernetes/contrib/installer/k8sconfig"
 	"github.com/kubernetes/contrib/installer/pkg/config"
 	"github.com/kubernetes/contrib/installer/pkg/fi"
+	"github.com/kubernetes/contrib/installer/pkg/files"
 )
 
 type Bootstrap struct {
@@ -35,8 +37,13 @@ func (b *Bootstrap) ReadConfig(configPath string) error {
 
 func main() {
 	configPath := "/etc/kubernetes/config.yaml"
-
 	flag.StringVar(&configPath, "config", configPath, "Path to kubernetes config file")
+
+	roles := ""
+	flag.StringVar(&roles, "roles", roles, "Roles to configure")
+
+	resourcedir := ""
+	flag.StringVar(&resourcedir, "resources", resourcedir, "Directory to scan for resources")
 
 	flag.Set("alsologtostderr", "true")
 
@@ -51,7 +58,7 @@ func main() {
 			}
 	*/
 
-	config := &fi.SimpleConfig{}
+	config := fi.NewSimpleConfig()
 	err := config.Read(configPath)
 	if err != nil {
 		glog.Fatalf("error reading configuration: %v", err)
@@ -60,6 +67,13 @@ func main() {
 	c, err := fi.NewContext(config)
 	if err != nil {
 		glog.Fatalf("error building context: %v", err)
+	}
+
+	for _, role := range strings.Split(roles, ",") {
+		c.AddRole(role)
+	}
+	if resourcedir != "" {
+		c.AddResources(files.NewResourceDir(resourcedir))
 	}
 
 	bc := c.NewBuildContext()

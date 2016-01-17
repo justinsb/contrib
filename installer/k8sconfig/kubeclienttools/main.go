@@ -10,5 +10,5 @@ type KubeClientTools struct {
 }
 
 func (k *KubeClientTools) Add(c *fi.BuildContext) {
-	c.Add(files.Path("/usr/local/bin/kubectl").WithContents(fi.Resource("kubectl")).WithMode(0755))
+	c.Add(files.Path("/usr/local/bin/kubectl").WithContents(c.Resource("kubectl")).WithMode(0755))
 }

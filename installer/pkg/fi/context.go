@@ -12,19 +12,21 @@ type Context struct {
 	roles []string
 	state map[string]interface{}
 
-	os     *OS
-	cloud  *Cloud
-	config Config
+	os        *OS
+	cloud     *Cloud
+	config    Config
+	resources *ResourcesList
 
 	root *node
 }
 
 func NewContext(config Config) (*Context, error) {
 	c := &Context{
-		state:  make(map[string]interface{}),
-		os:     &OS{},
-		cloud:  &Cloud{},
-		config: config,
+		state:     make(map[string]interface{}),
+		os:        &OS{},
+		cloud:     &Cloud{},
+		resources: &ResourcesList{},
+		config:    config,
 	}
 
 	c.root = &node{}
@@ -56,6 +58,10 @@ func (c *Context) NewBuildContext() *BuildContext {
 		node:    c.root,
 	}
 	return bc
+}
+
+func (c *Context) AddRole(role string) {
+	c.roles = append(c.roles, role)
 }
 
 func (c *Context) HasRole(role string) bool {
@@ -163,8 +169,38 @@ func (c *Context) initializeNode(unit Unit) {
 				}
 			}
 
+		case reflect.Bool:
+			{
+				v := fieldValue.Bool()
+				if v != false {
+					// Honor values directly set
+					continue
+				}
+				s, found := c.config.Get(fieldKey)
+				if found {
+					var err error
+					v, err = strconv.ParseBool(s)
+					if err != nil {
+						panic("Unexpected error parsing config value: " + s + " for " + fieldName)
+					}
+					fieldValue.SetBool(v)
+				}
+			}
+
 		default:
 			panic(fmt.Sprintf("Unhandled field type: %v in %v::%v", fieldType.Kind(), unitType, field.Name))
 		}
 	}
+}
+
+func (c *Context) Resource(key string) Resource {
+	r, found := c.resources.Get(key)
+	if !found {
+		panic("Resource not found: " + key)
+	}
+	return r
+}
+
+func (c *Context) AddResources(r Resources) {
+	c.resources.Add(r)
 }

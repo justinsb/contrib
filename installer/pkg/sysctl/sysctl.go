@@ -22,14 +22,14 @@ func Set(name string, value string) *Sysctl {
 	}
 }
 
-func (s *Sysctl) buildSysctlFile() (string, error) {
-	return fmt.Sprintf("%s = %s", s.Name, s.Value), nil
+func (s *Sysctl) buildSysctlFile() fi.Resource {
+	return fi.NewStringResource(fmt.Sprintf("%s = %s", s.Name, s.Value))
 }
 
 func (s *Sysctl) Configure(c *fi.RunContext) error {
 	sysctlFile := files.New()
 	sysctlFile.Path = path.Join("/etc/sysctl.d", "99-"+s.Name+".conf")
-	sysctlFile.Contents = s.buildSysctlFile
+	sysctlFile.Contents = s.buildSysctlFile()
 	err := sysctlFile.Configure(c)
 	if err != nil {
 		return err

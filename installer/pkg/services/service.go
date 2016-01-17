@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"math"
@@ -56,41 +57,36 @@ func systemctlDaemonReload() error {
 	return nil
 }
 
-func (s *Service) buildEnvFile() (string, error) {
-	var b bytes.Buffer
+func (s *Service) buildEnvFile() fi.Resource {
+	var sb fi.StringBuilder
 	for k, v := range s.Environment {
-		b.Write([]byte(k))
-		b.Write([]byte("=\""))
+		sb.Append(k)
+		sb.Append("=\"")
 		// TODO: Escaping
-		b.Write([]byte(v))
-		b.Write([]byte("\"\n"))
+		sb.Append(v)
+		sb.Append("\"\n")
 	}
-	return string(b.Bytes()), nil
+	return sb.AsResource()
 }
 
 type IniFile struct {
-	b   bytes.Buffer
-	err error
-}
-
-func (i *IniFile) Bytes() []byte {
-	return i.b.Bytes()
-}
-
-func (i *IniFile) Error() error {
-	return i.err
+	sb fi.StringBuilder
 }
 
 func (i *IniFile) StartSection(name string) {
-	fmt.Fprintf(&i.b, "[%s]\n", name)
+	i.sb.Appendf("[%s]\n", name)
 }
 
 func (i *IniFile) WriteKey(key string, value string) {
 	// TODO: Escaping
-	fmt.Fprintf(&i.b, "%s=%s\n", key, value)
+	i.sb.Appendf("%s=%s\n", key, value)
 }
 
-func (s *Service) buildUnitFile() (string, error) {
+func (i *IniFile) AsResource() fi.Resource {
+	return i.sb.AsResource()
+}
+
+func (s *Service) buildUnitFile() fi.Resource {
 	var i IniFile
 	i.StartSection("Unit")
 	if s.Description != "" {
@@ -140,7 +136,7 @@ func (s *Service) buildUnitFile() (string, error) {
 	i.StartSection("Install")
 	i.WriteKey("WantedBy", "multi-user.target")
 
-	return string(i.Bytes()), i.Error()
+	return i.AsResource()
 }
 
 func (s *Service) envFilePath() string {
@@ -152,7 +148,7 @@ func (s *Service) Configure(context *fi.RunContext) error {
 		// TODO: Expose tree structure
 		unitfile := files.New()
 		unitfile.Path = path.Join("/lib/systemd/system", s.Name+".service")
-		unitfile.Contents = s.buildUnitFile
+		unitfile.Contents = s.buildUnitFile()
 		err := unitfile.Configure(context)
 		if err != nil {
 			return err
@@ -161,7 +157,7 @@ func (s *Service) Configure(context *fi.RunContext) error {
 		if s.Environment != nil {
 			envfile := files.New()
 			envfile.Path = s.envFilePath()
-			envfile.Contents = s.buildEnvFile
+			envfile.Contents = s.buildEnvFile()
 			err := envfile.Configure(context)
 			if err != nil {
 				return err
@@ -175,13 +171,62 @@ func (s *Service) Configure(context *fi.RunContext) error {
 		}
 	}
 
-	// TODO: Only if not running
-
-	glog.V(2).Infof("Start service %q", s.Name)
-	cmd := exec.Command("systemctl", "start", s.Name)
-	output, err := cmd.CombinedOutput()
+	state, err := getSystemdServiceState(s.Name)
 	if err != nil {
-		return fmt.Errorf("error starting service %q: %v: %s", s.Name, err, string(output))
+		return err
+	}
+
+	if !state.IsRunning() {
+		glog.V(2).Infof("Start service %q", s.Name)
+		cmd := exec.Command("systemctl", "start", s.Name)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error starting service %q: %v: %s", s.Name, err, string(output))
+		}
 	}
 	return nil
+}
+
+type SystemdServiceState struct {
+	state map[string]string
+}
+
+func (s *SystemdServiceState) Get(key string) string {
+	return s.state[key]
+}
+
+func (s *SystemdServiceState) IsRunning() bool {
+	return s.Get("ActiveState") == "active" && s.Get("SubState") == "running"
+}
+
+func getSystemdServiceState(serviceName string) (*SystemdServiceState, error) {
+	glog.V(2).Infof("Getting state of service %q", serviceName)
+	cmd := exec.Command("systemctl", "show", serviceName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("error getting service state %q: %v: %s", serviceName, err, string(output))
+	}
+
+	s := &SystemdServiceState{
+		state: make(map[string]string),
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		tokens := strings.SplitN(line, "=", 2)
+		if len(tokens) != 2 {
+			return nil, fmt.Errorf("cannot parse service state %q for service %q", line, serviceName)
+		}
+
+		s.state[tokens[0]] = tokens[1]
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error parsing service state %q: %v: %s", serviceName, err, string(output))
+	}
+	return s, nil
 }
