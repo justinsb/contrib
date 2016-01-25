@@ -189,6 +189,7 @@ func (s *systemdStartService) Run(c *fi.RunContext) error {
 	}
 
 	if state.IsRunning() {
+		glog.Warningf("TODO: Do not skip if parent dirty")
 		glog.V(2).Infof("Service already running: %q", s.Name)
 		return nil
 	}

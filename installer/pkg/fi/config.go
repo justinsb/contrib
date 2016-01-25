@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"unicode"
+
+	"github.com/golang/glog"
 )
 
 type Config interface {
@@ -43,13 +45,45 @@ func toUnderscore(s string) string {
 	return string(b.Bytes())
 }
 
+func fromYamlKey(s string) string {
+	var b bytes.Buffer
+	toUpper := true
+	for _, r := range s {
+		if r == '-' || r == '_' {
+			toUpper = true
+			continue
+		}
+
+		if toUpper {
+			r = unicode.ToUpper(r)
+			toUpper = false
+		}
+		b.WriteRune(r)
+	}
+
+	return string(b.Bytes())
+}
+
+func fromYamlValue(s string) string {
+	if s == "" {
+		return s
+	}
+
+	if s[0] == '\'' && s[len(s)-1] == '\'' {
+		s = s[1 : len(s)-1]
+	} else if s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+
+	return s
+}
+
 func (c *SimpleConfig) Get(fieldName string) (string, bool) {
-	key := toUnderscore(fieldName)
-	v, found := c.config[key]
+	v, found := c.config[fieldName]
 	return v, found
 }
 
-func (c *SimpleConfig) Read(file string) error {
+func (c *SimpleConfig) ReadYaml(file string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return fmt.Errorf("error opening config file %q: %v", file, err)
@@ -70,7 +104,12 @@ func (c *SimpleConfig) Read(file string) error {
 		}
 
 		k := strings.TrimSpace(tokens[0])
+		k = fromYamlKey(k)
+
 		v := strings.TrimSpace(tokens[1])
+		v = fromYamlValue(v)
+
+		glog.V(2).Infof("Read configuration value: %s=%s", k, v)
 
 		c.config[k] = v
 	}

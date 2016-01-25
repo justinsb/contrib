@@ -62,7 +62,7 @@ func main() {
 	*/
 
 	config := fi.NewSimpleConfig()
-	err := config.Read(configPath)
+	err := config.ReadYaml(configPath)
 	if err != nil {
 		glog.Fatalf("error reading configuration: %v", err)
 	}
