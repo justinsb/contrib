@@ -4,10 +4,10 @@ package docker
 import (
 	"math"
 
-	"github.com/kubernetes/contrib/installer/pkg/fi"
-	"github.com/kubernetes/contrib/installer/pkg/packages"
-	"github.com/kubernetes/contrib/installer/pkg/services"
-	"github.com/kubernetes/contrib/installer/pkg/sysctl"
+	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/packages"
+	"k8s.io/contrib/installer/pkg/services"
+	"k8s.io/contrib/installer/pkg/sysctl"
 )
 
 type Docker struct {

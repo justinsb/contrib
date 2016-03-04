@@ -1,8 +1,8 @@
 package kubeclienttools
 
 import (
-	"github.com/kubernetes/contrib/installer/pkg/fi"
-	"github.com/kubernetes/contrib/installer/pkg/files"
+	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/files"
 )
 
 type KubeClientTools struct {

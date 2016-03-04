@@ -189,7 +189,7 @@ var _escData = map[string]*_escFile{
 	"/kube-node-unpacker.sh": {
 		local:   "res/kube-node-unpacker.sh",
 		size:    1531,
-		modtime: 1453050623,
+		modtime: 1457064616,
 		compressed: `
 H4sIAAAJbogA/2xU72/bNhD9rr/i5hTDBiSSna1fFriDl6aY0MIBYndFURQDRZ0kIhSpkScrxtb/fUdK
 +WG7/mBJ5PHdu8d3d/ZDViiTFcI3SXIG17bbO1U3BJfzxWvYNgjv+wKdQUIPq54a6/ipNcQoDw49uh2W

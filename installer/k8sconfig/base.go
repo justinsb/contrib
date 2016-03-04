@@ -1,8 +1,8 @@
 package k8sconfig
 
 import (
-	"github.com/kubernetes/contrib/installer/pkg/fi"
-	"github.com/kubernetes/contrib/installer/pkg/packages"
+	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/packages"
 )
 
 type Base struct {

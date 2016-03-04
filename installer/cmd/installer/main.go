@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
-	"github.com/kubernetes/contrib/installer/pkg/config"
-	"github.com/kubernetes/contrib/installer/pkg/tasks"
+	"k8s.io/contrib/installer/pkg/config"
+	"k8s.io/contrib/installer/pkg/tasks"
 )
 
 var basePath string

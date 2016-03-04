@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 const defaultMode = 0644

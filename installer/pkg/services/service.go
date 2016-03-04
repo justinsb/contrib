@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes/contrib/installer/pkg/fi"
-	"github.com/kubernetes/contrib/installer/pkg/files"
+	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/files"
 )
 
 func Running(name string) *Service {

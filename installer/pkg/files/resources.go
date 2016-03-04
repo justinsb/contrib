@@ -6,7 +6,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/kubernetes/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type FSResources struct {

@@ -1,9 +1,9 @@
 package ntp
 
 import (
-	"github.com/kubernetes/contrib/installer/pkg/fi"
-	"github.com/kubernetes/contrib/installer/pkg/packages"
-	"github.com/kubernetes/contrib/installer/pkg/services"
+	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/packages"
+	"k8s.io/contrib/installer/pkg/services"
 )
 
 type Ntp struct {

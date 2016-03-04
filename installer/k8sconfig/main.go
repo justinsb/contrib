@@ -1,15 +1,15 @@
 package k8sconfig
 
 import (
-	"github.com/kubernetes/contrib/installer/k8sconfig/debianautoupgrades"
-	"github.com/kubernetes/contrib/installer/k8sconfig/docker"
-	"github.com/kubernetes/contrib/installer/k8sconfig/kubeclienttools"
-	"github.com/kubernetes/contrib/installer/k8sconfig/kubelet"
-	"github.com/kubernetes/contrib/installer/k8sconfig/kubenodeunpacker"
-	"github.com/kubernetes/contrib/installer/k8sconfig/kubeproxy"
-	"github.com/kubernetes/contrib/installer/k8sconfig/logrotate"
-	"github.com/kubernetes/contrib/installer/k8sconfig/ntp"
-	"github.com/kubernetes/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/k8sconfig/debianautoupgrades"
+	"k8s.io/contrib/installer/k8sconfig/docker"
+	"k8s.io/contrib/installer/k8sconfig/kubeclienttools"
+	"k8s.io/contrib/installer/k8sconfig/kubelet"
+	"k8s.io/contrib/installer/k8sconfig/kubenodeunpacker"
+	"k8s.io/contrib/installer/k8sconfig/kubeproxy"
+	"k8s.io/contrib/installer/k8sconfig/logrotate"
+	"k8s.io/contrib/installer/k8sconfig/ntp"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type Kubernetes struct {

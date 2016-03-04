@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes/contrib/installer/pkg/config"
+	"k8s.io/contrib/installer/pkg/config"
 )
 
 type MasterScript struct {

@@ -10,10 +10,10 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes/contrib/installer/k8sconfig"
-	"github.com/kubernetes/contrib/installer/pkg/config"
-	"github.com/kubernetes/contrib/installer/pkg/fi"
-	"github.com/kubernetes/contrib/installer/pkg/files"
+	"k8s.io/contrib/installer/k8sconfig"
+	"k8s.io/contrib/installer/pkg/config"
+	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/files"
 )
 
 type Bootstrap struct {
