@@ -128,7 +128,7 @@ func (i *Instance) findExisting(cloud *AWSCloud) (*ec2.Instance, error) {
 		Filters: filters,
 	}
 
-	response, err := cloud.ec2.DescribeInstances(request)
+	response, err := cloud.EC2.DescribeInstances(request)
 	if err != nil {
 		return nil, fmt.Errorf("error listing instances: %v", err)
 	}

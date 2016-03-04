@@ -14,7 +14,7 @@ type KubeNodeUnpacker struct {
 func (k *KubeNodeUnpacker) Add(c *fi.BuildContext) {
 	c.Add(files.Path("/etc/kubernetes/kube-node-unpacker.sh").WithContents(fi.EmbeddedResource(FS(false), "/kube-node-unpacker.sh")).WithMode(0755))
 
-	if c.Cloud().IsGCE() {
+	if c.Cloud().ProviderID() != "aws" {
 		panic("GCE not supported in kubenodeunpacker")
 	} else {
 		c.Add(files.Path("/srv/salt/kube-bins/kube-proxy.tar").WithContents(c.Resource("kube-proxy.tar")))

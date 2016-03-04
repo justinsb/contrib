@@ -20,7 +20,7 @@ func (r *IAMInstanceProfile) String() string {
 func (r *IAMInstanceProfile) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	request := &iam.GetInstanceProfileInput{InstanceProfileName: aws.String(r.Name)}
 
-	existing, err := cloud.iam.GetInstanceProfile(request)
+	existing, err := cloud.IAM.GetInstanceProfile(request)
 	if err != nil {
 		return fmt.Errorf("error getting instance profile policy: %v", err)
 	}

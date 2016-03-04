@@ -53,10 +53,6 @@ func RandomToken(length int) string {
 
 var templateDir = "templates"
 
-type BashRenderable interface {
-	RenderBash(cloud *AWSCloud, output *BashTarget) error
-}
-
 type SSHKey struct {
 	Name      string
 	PublicKey Resource
@@ -64,82 +60,6 @@ type SSHKey struct {
 
 func (k *SSHKey) String() string {
 	return fmt.Sprintf("SSHKey (name=%s)", k.Name)
-}
-
-type VPC struct {
-	CIDR string
-}
-
-func (v *VPC) Prefix() string {
-	return "Vpc"
-}
-
-func (v *VPC) String() string {
-	return fmt.Sprintf("VPC (cidr=%s)", v.CIDR)
-}
-
-func (v *VPC) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	request := &ec2.DescribeVpcsInput{
-		Filters: cloud.BuildFilters(),
-	}
-
-	response, err := cloud.ec2.DescribeVpcs(request)
-	if err != nil {
-		return fmt.Errorf("error listing VPCs: %v", err)
-	}
-
-	var existing *ec2.Vpc
-	if response != nil && len(response.Vpcs) != 0 {
-		if len(response.Vpcs) != 1 {
-			glog.Fatalf("found multiple VPCs matching tags")
-		}
-		glog.V(2).Info("found matching VPC")
-		existing = response.Vpcs[0]
-	}
-
-	vpcId := ""
-	output.CreateVar(v)
-	if existing == nil {
-		glog.V(2).Info("VPC not found; will create")
-		output.AddEC2Command("create-vpc", "--cidr-block", v.CIDR, "--query", "Vpc.VpcId").AssignTo(v)
-	} else {
-		vpcId = aws.StringValue(existing.VpcId)
-		output.AddAssignment(v, vpcId)
-	}
-
-	hasDnsSupport := false
-	if existing != nil {
-		request := &ec2.DescribeVpcAttributeInput{VpcId: existing.VpcId, Attribute: aws.String(ec2.VpcAttributeNameEnableDnsSupport)}
-		response, err := cloud.ec2.DescribeVpcAttribute(request)
-		if err != nil {
-			return fmt.Errorf("error querying for dns support: %v", err)
-		}
-		if response != nil && response.EnableDnsSupport != nil {
-			hasDnsSupport = aws.BoolValue(response.EnableDnsSupport.Value)
-		}
-	}
-
-	if !hasDnsSupport {
-		output.AddEC2Command("modify-vpc-attribute", "--vpc-id", output.ReadVar(v), "--enable-dns-support", "'{\"Value\": true}'")
-	}
-
-	hasDnsHostnames := false
-	if existing != nil {
-		request := &ec2.DescribeVpcAttributeInput{VpcId: existing.VpcId, Attribute: aws.String(ec2.VpcAttributeNameEnableDnsHostnames)}
-		response, err := cloud.ec2.DescribeVpcAttribute(request)
-		if err != nil {
-			return fmt.Errorf("error querying for dns hostnames: %v", err)
-		}
-		if response != nil && response.EnableDnsHostnames != nil {
-			hasDnsHostnames = aws.BoolValue(response.EnableDnsHostnames.Value)
-		}
-	}
-
-	if !hasDnsHostnames {
-		output.AddEC2Command("modify-vpc-attribute", "--vpc-id", output.ReadVar(v), "--enable-dns-hostnames", "'{\"Value\": true}'")
-	}
-
-	return output.AddAWSTags(cloud.Tags(), v, "vpc")
 }
 
 type Subnet struct {
@@ -161,7 +81,7 @@ func (s *Subnet) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		Filters: cloud.BuildFilters(),
 	}
 
-	response, err := cloud.ec2.DescribeSubnets(request)
+	response, err := cloud.EC2.DescribeSubnets(request)
 	if err != nil {
 		return fmt.Errorf("error listing subnets: %v", err)
 	}
@@ -189,21 +109,21 @@ func (s *Subnet) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 }
 
 type AWSCloud struct {
-	region      string
-	s3          *s3.S3
-	iam         *iam.IAM
-	ec2         *ec2.EC2
-	autoscaling *autoscaling.AutoScaling
+	Region      string
+	S3          *s3.S3
+	IAM         *iam.IAM
+	EC2         *ec2.EC2
+	Autoscaling *autoscaling.AutoScaling
 	tags        map[string]string
 }
 
 func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
-	c := &AWSCloud{region: region}
+	c := &AWSCloud{Region: region}
 	config := aws.NewConfig().WithRegion(region)
-	c.ec2 = ec2.New(session.New(), config)
-	c.s3 = s3.New(session.New(), config)
-	c.iam = iam.New(session.New(), config)
-	c.autoscaling = autoscaling.New(session.New(), config)
+	c.EC2 = ec2.New(session.New(), config)
+	c.S3 = s3.New(session.New(), config)
+	c.IAM = iam.New(session.New(), config)
+	c.Autoscaling = autoscaling.New(session.New(), config)
 	c.tags = tags
 	return c
 }
@@ -239,7 +159,7 @@ func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]s
 		},
 	}
 
-	response, err := c.ec2.DescribeTags(request)
+	response, err := c.EC2.DescribeTags(request)
 	if err != nil {
 		return nil, fmt.Errorf("error listing tags on %v:%v: %v", resourceType, resourceId, err)
 	}
@@ -266,12 +186,13 @@ func (c *AWSCloud) BuildFilters() []*ec2.Filter {
 
 func (c *AWSCloud) EnvVars() map[string]string {
 	env := map[string]string{}
-	env["AWS_DEFAULT_REGION"] = c.region
+	env["AWS_DEFAULT_REGION"] = c.Region
 	env["AWS_DEFAULT_OUTPUT"] = "text"
 	return env
 }
 
 type BashTarget struct {
+	// TODO: Remove cloud
 	cloud    *AWSCloud
 	commands []*BashCommand
 
@@ -574,7 +495,7 @@ func (k *SSHKey) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		},
 	}
 
-	response, err := cloud.ec2.DescribeKeyPairs(request)
+	response, err := cloud.EC2.DescribeKeyPairs(request)
 	if awsErr, ok := err.(awserr.Error); ok {
 		if awsErr.Code() == "InvalidKeyPair.NotFound" {
 			err = nil

@@ -24,7 +24,7 @@ func (r *IAMRolePolicy) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		PolicyName: aws.String(r.Name),
 	}
 
-	existing, err := cloud.iam.GetRolePolicy(request)
+	existing, err := cloud.IAM.GetRolePolicy(request)
 	if err != nil {
 		return fmt.Errorf("error getting role policy: %v", err)
 	}

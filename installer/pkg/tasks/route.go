@@ -32,7 +32,7 @@ func (r *Route) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 			Filters: []*ec2.Filter{newEc2Filter("route-table-id", routeTableId)},
 		}
 
-		response, err := cloud.ec2.DescribeRouteTables(request)
+		response, err := cloud.EC2.DescribeRouteTables(request)
 		if err != nil {
 			return fmt.Errorf("error listing route tables: %v", err)
 		}

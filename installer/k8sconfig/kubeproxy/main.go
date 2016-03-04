@@ -34,13 +34,15 @@ func (k *KubeProxy) buildManifest(c *fi.BuildContext) fi.Resource {
 		//{% set api_servers = "--master=https://" + ips[0][0] -%}
 	}
 
-	cloud := c.Cloud()
+	/*
+		cloud := c.Cloud()
 
-	if cloud.IsGCE() || cloud.IsAWS() || cloud.IsVagrant() {
-		// No change
-	} else {
-		api_servers += ":6443"
-	}
+		if cloud.IsGCE() || cloud.IsAWS() || cloud.IsVagrant() {
+			// No change
+		} else {
+			api_servers += ":6443"
+		}
+	*/
 
 	test_args := k.KubeproxyTestArgs
 

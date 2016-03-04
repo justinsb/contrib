@@ -48,7 +48,7 @@ func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		}
 
 		// TODO: Target correct region
-		response, err := cloud.s3.HeadObject(request)
+		response, err := cloud.S3.HeadObject(request)
 		if err != nil {
 			if requestFailure, ok := err.(awserr.RequestFailure); ok {
 				if requestFailure.StatusCode() == 404 {

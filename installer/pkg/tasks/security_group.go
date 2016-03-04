@@ -56,7 +56,7 @@ func (s *SecurityGroup) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 				newEc2Filter("group-name", s.Name)},
 		}
 
-		response, err := cloud.ec2.DescribeSecurityGroups(request)
+		response, err := cloud.EC2.DescribeSecurityGroups(request)
 		if err != nil {
 			return fmt.Errorf("error listing security groups: %v", err)
 		}
@@ -114,7 +114,7 @@ func (s *SecurityGroupIngress) RenderBash(cloud *AWSCloud, output *BashTarget) e
 			},
 		}
 
-		response, err := cloud.ec2.DescribeSecurityGroups(request)
+		response, err := cloud.EC2.DescribeSecurityGroups(request)
 		if err != nil {
 			return fmt.Errorf("error listing security groups: %v", err)
 		}

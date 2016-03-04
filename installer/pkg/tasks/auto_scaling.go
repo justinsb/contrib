@@ -29,7 +29,7 @@ func (l *AutoscalingLaunchConfiguration) RenderBash(cloud *AWSCloud, output *Bas
 		LaunchConfigurationNames: []*string{&name},
 	}
 
-	response, err := cloud.autoscaling.DescribeLaunchConfigurations(request)
+	response, err := cloud.Autoscaling.DescribeLaunchConfigurations(request)
 	if err != nil {
 		return fmt.Errorf("error listing launch configurations: %v", err)
 	}

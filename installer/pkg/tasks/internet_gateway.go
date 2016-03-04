@@ -29,7 +29,7 @@ func (g *InternetGateway) RenderBash(cloud *AWSCloud, output *BashTarget) error 
 			Filters: []*ec2.Filter{newEc2Filter("attachment.vpc-id", vpcId)},
 		}
 
-		response, err := cloud.ec2.DescribeInternetGateways(request)
+		response, err := cloud.EC2.DescribeInternetGateways(request)
 		if err != nil {
 			return fmt.Errorf("error listing internet gateways: %v", err)
 		}

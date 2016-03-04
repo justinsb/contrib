@@ -13,7 +13,7 @@ type Context struct {
 	state map[string]interface{}
 
 	os        *OS
-	cloud     *Cloud
+	cloud     Cloud
 	config    Config
 	resources *ResourcesList
 
@@ -21,10 +21,11 @@ type Context struct {
 }
 
 func NewContext(config Config) (*Context, error) {
+	cloud := NewAWSCloud()
 	c := &Context{
 		state:     make(map[string]interface{}),
 		os:        &OS{},
-		cloud:     &Cloud{},
+		cloud:     cloud,
 		resources: &ResourcesList{},
 		config:    config,
 	}
@@ -32,11 +33,6 @@ func NewContext(config Config) (*Context, error) {
 	c.root = &node{}
 
 	err := c.os.init()
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.cloud.init()
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +74,7 @@ func (c *Context) OS() *OS {
 	return c.os
 }
 
-func (c *Context) Cloud() *Cloud {
+func (c *Context) Cloud() Cloud {
 	return c.cloud
 }
 

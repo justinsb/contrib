@@ -45,7 +45,7 @@ func (b *S3Bucket) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 		Bucket: aws.String(name),
 	}
 
-	response, err := cloud.s3.GetBucketLocation(request)
+	response, err := cloud.S3.GetBucketLocation(request)
 	if err != nil {
 		if awsError, ok := err.(awserr.Error); ok {
 			if awsError.Code() == "NoSuchBucket" {

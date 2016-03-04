@@ -20,7 +20,7 @@ func (r *IAMRole) String() string {
 func (r *IAMRole) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	request := &iam.GetRoleInput{RoleName: aws.String(r.Name)}
 
-	existing, err := cloud.iam.GetRole(request)
+	existing, err := cloud.IAM.GetRole(request)
 	if err != nil {
 		return fmt.Errorf("error getting role: %v", err)
 	}

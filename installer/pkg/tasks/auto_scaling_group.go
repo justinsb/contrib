@@ -30,7 +30,7 @@ func (g *AutoscalingGroup) findExisting(cloud *AWSCloud) (*autoscaling.Group, er
 		AutoScalingGroupNames: []*string{&name},
 	}
 
-	response, err := cloud.autoscaling.DescribeAutoScalingGroups(request)
+	response, err := cloud.Autoscaling.DescribeAutoScalingGroups(request)
 	if err != nil {
 		return nil, fmt.Errorf("error listing autoscaling groups: %v", err)
 	}

@@ -29,7 +29,7 @@ func (r *RouteTable) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 			Filters: []*ec2.Filter{newEc2Filter("association.subnet-id", subnetId)},
 		}
 
-		response, err := cloud.ec2.DescribeRouteTables(request)
+		response, err := cloud.EC2.DescribeRouteTables(request)
 		if err != nil {
 			return fmt.Errorf("error listing route tables: %v", err)
 		}

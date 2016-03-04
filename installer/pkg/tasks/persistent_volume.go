@@ -33,7 +33,7 @@ func (v *PersistentVolume) RenderBash(cloud *AWSCloud, output *BashTarget) error
 		Filters: filters,
 	}
 
-	response, err := cloud.ec2.DescribeVolumes(request)
+	response, err := cloud.EC2.DescribeVolumes(request)
 	if err != nil {
 		return fmt.Errorf("error listing volumes: %v", err)
 	}

@@ -178,45 +178,45 @@ func (k *Kubelet) buildKubeletCommandLine(c *fi.BuildContext) string {
 	}
 
 	cloud := c.Cloud()
-	if cloud.IsAWS() || cloud.IsGCE() || cloud.IsVagrant() {
-		// No port
-	} else {
-		panic("cloud not supported")
+	/*
+		if cloud.IsAWS() || cloud.IsGCE() || cloud.IsVagrant() {
+			// No port
+		} else {
+			panic("cloud not supported")
 
-		/*
-		  # TODO: remove nginx for other cloud providers.
-		  {% if grains['cloud'] is defined and grains.cloud in [ 'aws', 'gce', 'vagrant' ]  %}
-		    {% set api_servers_with_port = api_servers -%}
-		  {% else -%}
-		    {% set api_servers_with_port = api_servers + ":6443" -%}
-		  {% endif -%}
-		*/
-	}
+			  # TODO: remove nginx for other cloud providers.
+			  {% if grains['cloud'] is defined and grains.cloud in [ 'aws', 'gce', 'vagrant' ]  %}
+			    {% set api_servers_with_port = api_servers -%}
+			  {% else -%}
+			    {% set api_servers_with_port = api_servers + ":6443" -%}
+			  {% endif -%}
+		}
+	*/
 
 	args.EnableDebuggingHandlers = true
 
 	if c.HasRole("kubernetes-master") {
-		if cloud.IsAWS() || cloud.IsGCE() || cloud.IsVagrant() {
-			// Unless given a specific directive, disable registration for the kubelet
-			// running on the master.
-			if k.KubeletApiServers != "" {
-				args.ApiServers = "https://" + k.KubeletApiServers
-				args.RegisterSchedulable = false
-				args.ReconcileCidr = false
-			} else {
-				args.ApiServers = ""
-			}
-
-			// Disable the debugging handlers (/run and /exec) to prevent arbitrary
-			// code execution on the master.
-			// TODO(roberthbailey): Relax this constraint once the master is self-hosted.
-			args.EnableDebuggingHandlers = false
+		//		if cloud.IsAWS() || cloud.IsGCE() || cloud.IsVagrant() {
+		// Unless given a specific directive, disable registration for the kubelet
+		// running on the master.
+		if k.KubeletApiServers != "" {
+			args.ApiServers = "https://" + k.KubeletApiServers
+			args.RegisterSchedulable = false
+			args.ReconcileCidr = false
+		} else {
+			args.ApiServers = ""
 		}
+
+		// Disable the debugging handlers (/run and /exec) to prevent arbitrary
+		// code execution on the master.
+		// TODO(roberthbailey): Relax this constraint once the master is self-hosted.
+		args.EnableDebuggingHandlers = false
+		//		}
 	}
 
-	if cloud.ProviderID != "" && cloud.ProviderID != "vagrant" {
-		args.CloudProvider = cloud.ProviderID
-	}
+	//if cloud.ProviderID != "" && cloud.ProviderID != "vagrant" {
+	args.CloudProvider = string(cloud.ProviderID())
+	//}
 
 	args.Config = "/etc/kubernetes/manifests"
 
