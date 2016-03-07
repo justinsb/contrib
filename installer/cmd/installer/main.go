@@ -46,6 +46,10 @@ func renderItems(items []tasks.Item, context *tasks.Context) {
 	}
 }
 
+func String(s string) *string {
+	return &s
+}
+
 func main() {
 	var config config.Configuration
 	var masterVolumeSize int
@@ -161,11 +165,11 @@ func main() {
 
 	context := tasks.NewContext(target, cloud)
 
-	cidr := "172.20.0.0/16"
-	vpc := &tasks.VPC{CIDR: &cidr}
-
+	vpc := &tasks.VPC{CIDR: String("172.20.0.0/16")}
+	subnet := &tasks.Subnet{VPC: vpc, AvailabilityZone: String(az), CIDR: String("172.20.0.0/24")}
+	//		igw := &tasks.InternetGateway{VPC: vpc}
 	glog.Info("Processing VPC resources")
-	renderItems([]tasks.Item{vpc}, context)
+	renderItems([]tasks.Item{vpc, subnet}, context)
 
 	/*
 		instanceType := "m3.medium"

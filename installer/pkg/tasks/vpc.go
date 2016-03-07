@@ -2,7 +2,6 @@ package tasks
 
 import (
 	"fmt"
-	"reflect"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -25,7 +24,7 @@ func (e *VPC) find(c *Context) (*VPC, error) {
 
 	actual := &VPC{}
 	request := &ec2.DescribeVpcsInput{
-	//Filters: cloud.BuildFilters(),
+		Filters: cloud.BuildFilters(),
 	}
 
 	response, err := cloud.EC2.DescribeVpcs(request)
@@ -64,43 +63,6 @@ func (e *VPC) find(c *Context) (*VPC, error) {
 	return actual, nil
 }
 
-func BuildChanges(a, e, changes interface{}) bool {
-	changed := false
-
-	va := reflect.ValueOf(a)
-	ve := reflect.ValueOf(e)
-	vc := reflect.ValueOf(changes)
-
-	va = va.Elem()
-	ve = ve.Elem()
-	vc = vc.Elem()
-
-	t := va.Type()
-	if t != ve.Type() {
-		panic("mismatched types in BuildChanges")
-	}
-
-	for i := 0; i < va.NumField(); i++ {
-		fva := va.Field(i)
-		fve := ve.Field(i)
-
-		if fve.IsNil() {
-			// No expected value means 'don't change'
-			continue
-		}
-
-		if reflect.DeepEqual(fva.Interface(), fve.Interface()) {
-			continue
-		}
-
-		glog.V(8).Infof("Field changed %q %q %q", t.Field(i).Name, fva.Interface(), fve.Interface())
-		changed = true
-		vc.Field(i).Set(fva)
-	}
-
-	return changed
-}
-
 func (e *VPC) Run(c *Context) error {
 	a, err := e.find(c)
 	if err != nil {
@@ -123,25 +85,6 @@ func (v *VPC) Prefix() string {
 
 func (v *VPC) String() string {
 	return fmt.Sprintf("VPC (cidr=%s)", v.CIDR)
-}
-
-type AWSAPITarget struct {
-	cloud *AWSCloud
-}
-
-func StringValue(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-func MissingValueError(message string) error {
-	return fmt.Errorf("%s", message)
-}
-
-func InvalidChangeError(message string, actual, expected interface{}) error {
-	return fmt.Errorf("%s current=%q, desired=%q", actual, expected)
 }
 
 func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
@@ -169,6 +112,12 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 
 		vpc := response.Vpc
 		id = *vpc.VpcId
+
+		err = t.addAWSTags(t.cloud.Tags(), id, "vpc")
+		if err != nil {
+			// TODO: Delete VPC?
+			return nil
+		}
 	}
 
 	if changes.EnableDNSSupport != nil {
@@ -211,6 +160,8 @@ func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
 		}
 
 		t.AddEC2Command("create-vpc", "--cidr-block", *e.CIDR, "--query", "Vpc.VpcId").AssignTo(e)
+
+		t.AddAWSTags(t.cloud.Tags(), e, "vpc")
 	} else {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
@@ -225,5 +176,5 @@ func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
 		t.AddEC2Command("modify-vpc-attribute", "--vpc-id", t.ReadVar(e), "--enable-dns-hostnames", s)
 	}
 
-	return t.AddAWSTags(t.cloud.Tags(), e, "vpc")
+	return nil
 }
