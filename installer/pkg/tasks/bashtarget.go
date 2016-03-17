@@ -289,7 +289,7 @@ func (t *BashTarget) AddResource(resource Resource) (string, error) {
 			}
 		}()
 
-		err = dynamicResource.Write(f)
+		err = dynamicResource.WriteTo(f)
 		if err != nil {
 			return "", fmt.Errorf("error writing resource: %v", err)
 		}

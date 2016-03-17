@@ -10,6 +10,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/config"
 	"k8s.io/contrib/installer/pkg/tasks"
+	"strconv"
 )
 
 var basePath string
@@ -36,7 +37,7 @@ func findBootstrap() tasks.Resource {
 	return &tasks.FileResource{Path: path}
 }
 
-func renderItems(items []tasks.Item, context *tasks.Context) {
+func renderItems(context *tasks.Context, items ...tasks.Item) {
 	for _, resource := range items {
 		glog.Info("rendering ", resource)
 		err := resource.Run(context)
@@ -48,6 +49,14 @@ func renderItems(items []tasks.Item, context *tasks.Context) {
 
 func String(s string) *string {
 	return &s
+}
+
+func Bool(v bool) *bool {
+	return &v
+}
+
+func Int64(v int64) *int64 {
+	return &v
 }
 
 func main() {
@@ -102,7 +111,7 @@ func main() {
 	if len(az) <= 2 {
 		glog.Exit("Invalid AZ: ", az)
 	}
-	region := az[:len(az)-1]
+	region := az[:len(az) - 1]
 
 	if s3BucketName == "" {
 		// TODO: Implement the generation logic
@@ -139,7 +148,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Error parsing service-cluster-ip-range: %v", err)
 	}
-	serviceIP[len(serviceIP)-1]++
+	serviceIP[len(serviceIP) - 1]++
 
 	masterExtraSans := []string{
 		"IP:" + serviceIP.String(),
@@ -165,6 +174,7 @@ func main() {
 
 	context := tasks.NewContext(target, cloud)
 
+	/*
 	vpc := &tasks.VPC{CIDR: String("172.20.0.0/16")}
 	subnet := &tasks.Subnet{VPC: vpc, AvailabilityZone: String(az), CIDR: String("172.20.0.0/24")}
 	igw := &tasks.InternetGateway{VPC: vpc}
@@ -195,199 +205,203 @@ func main() {
 	resources = append(resources, iamMasterRole)
 
 	renderItems(resources, context)
+*/
+	instanceType := "m3.medium"
 
-	/*
-		instanceType := "m3.medium"
+	s3Bucket := &tasks.S3Bucket{
+		Name:         String(s3BucketName),
+		Region: String(s3Region),
+	}
 
-		s3Bucket := &tasks.S3Bucket{
-			Name:         s3BucketName,
-			CreateRegion: s3Region,
+	s3KubernetesFile := &tasks.S3File{
+		Bucket: s3Bucket,
+		Key:    String("devel/kubernetes-server-linux-amd64.tar.gz"),
+		Source: findKubernetesTarGz(),
+		Public: Bool(true),
+	}
+
+	s3SaltFile := &tasks.S3File{
+		Bucket: s3Bucket,
+		Key:    String("devel/kubernetes-salt.tar.gz"),
+		Source: findSaltTarGz(),
+		Public: Bool(true),
+	}
+
+	s3BootstrapFile := &tasks.S3File{
+		Bucket: s3Bucket,
+		Key:    String("devel/kubernetes-bootstrap"),
+		Source: findBootstrap(),
+		Public: Bool(true),
+	}
+
+	s3Resources := []tasks.Item{
+		s3Bucket,
+		s3KubernetesFile,
+		s3BootstrapFile,
+		s3SaltFile,
+	}
+
+	glog.Info("Processing S3 resources")
+	renderItems(context, s3Resources...)
+
+	config.ServerBinaryTarURL = s3KubernetesFile.PublicURL()
+	config.SaltTarURL = s3SaltFile.PublicURL()
+	config.BootstrapURL = s3BootstrapFile.PublicURL()
+
+	masterPV := &tasks.PersistentVolume{
+		AvailabilityZone:         String(az),
+		Size:       Int64(int64(masterVolumeSize)),
+		VolumeType: String(volumeType),
+		Name:    String(clusterID + "-master-pd"),
+	}
+
+	glog.Info("Processing master volume resource")
+	masterPVResources := []tasks.Item{
+		masterPV,
+	}
+	renderItems(context, masterPVResources...)
+
+	config.MasterVolume = target.ReadVar(masterPV)
+
+	iamMasterRole := &tasks.IAMRole{
+		Name:               String("kubernetes-master"),
+		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-role.json"),
+	}
+	iamMasterRolePolicy := &tasks.IAMRolePolicy{
+		Role:           iamMasterRole,
+		Name:           String("kubernetes-master"),
+		PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-policy.json"),
+	}
+	iamMasterInstanceProfile := &tasks.IAMInstanceProfile{
+		Name: String("kubernetes-master"),
+	}
+	iamMasterInstanceProfileRole := &tasks.IAMInstanceProfileRole{
+		InstanceProfile: iamMasterInstanceProfile,
+		Role: iamMasterRole,
+	}
+
+	iamMinionRole := &tasks.IAMRole{
+		Name:             String("kubernetes-minion"),
+		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-role.json"),
+	}
+	iamMinionRolePolicy := &tasks.IAMRolePolicy{
+		Role:           iamMinionRole,
+		Name:          String("kubernetes-minion"),
+		PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-policy.json"),
+	}
+	iamMinionInstanceProfile := &tasks.IAMInstanceProfile{
+		Name:String("kubernetes-minion"),
+	}
+	iamMinionInstanceProfileRole := &tasks.IAMInstanceProfileRole{
+		InstanceProfile: iamMinionInstanceProfile,
+		Role: iamMinionRole,
+	}
+
+	sshKey := &tasks.SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: &tasks.FileResource{Path: "~/.ssh/justin2015.pub"}}
+	vpc := &tasks.VPC{CIDR:String("172.20.0.0/16")}
+	subnet := &tasks.Subnet{VPC: vpc, AvailabilityZone: &az, CIDR: String("172.20.0.0/24")}
+	igw := &tasks.InternetGateway{VPC: vpc}
+	routeTable := &tasks.RouteTable{VPC: vpc}
+	route := &tasks.Route{RouteTable: routeTable, CIDR: String("0.0.0.0/0"), InternetGateway: igw}
+	masterSG := &tasks.SecurityGroup{
+		Name:        String("kubernetes-master-" + clusterID),
+		Description: String("Security group for master nodes"),
+		VPC:         vpc}
+	minionSG := &tasks.SecurityGroup{
+		Name:        String("kubernetes-minion-" + clusterID),
+		Description: String("Security group for minion nodes"),
+		VPC:         vpc}
+
+	masterUserData := &tasks.MasterScript{
+		Config: &config,
+	}
+
+	masterBlockDeviceMappings := []*tasks.BlockDeviceMapping{}
+
+	// Be sure to map all the ephemeral drives.  We can specify more than we actually have.
+	// TODO: Actually mount the correct number (especially if we have more), though this is non-trivial, and
+	//  only affects the big storage instance types, which aren't a typical use case right now.
+	for i := 0; i < 4; i++ {
+		bdm := &tasks.BlockDeviceMapping{
+			DeviceName:  String("/dev/sd" + string('c' + i)),
+			VirtualName: String("ephemeral" + strconv.Itoa(i)),
 		}
+		masterBlockDeviceMappings = append(masterBlockDeviceMappings, bdm)
+	}
 
-		s3KubernetesFile := &tasks.S3File{
-			Bucket: s3Bucket,
-			Key:    "devel/kubernetes-server-linux-amd64.tar.gz",
-			Source: findKubernetesTarGz(),
-			Public: true,
-		}
+	minionBlockDeviceMappings := masterBlockDeviceMappings
+	minionUserData := &tasks.MinionScript{
+		Config: &config,
+	}
 
-		s3SaltFile := &tasks.S3File{
-			Bucket: s3Bucket,
-			Key:    "devel/kubernetes-salt.tar.gz",
-			Source: findSaltTarGz(),
-			Public: true,
-		}
+	masterInstance := &tasks.Instance{
+		Name: String(clusterID + "-master"),
+		Subnet:              subnet,
+		PrivateIPAddress:    String(masterInternalIP),
+		InstanceCommonConfig: tasks.InstanceCommonConfig{
+			SSHKey:              sshKey,
+			SecurityGroups:      []*tasks.SecurityGroup{masterSG},
+			IAMInstanceProfile:  iamMasterInstanceProfile,
+			ImageID:             String(imageID),
+			InstanceType:        String(instanceType),
+			AssociatePublicIP:   Bool(true),
+			BlockDeviceMappings: masterBlockDeviceMappings,
+			UserData:            masterUserData,
+		},
+		Tags: map[string]string{"Role": "master"},
+	}
 
-		s3BootstrapFile := &tasks.S3File{
-			Bucket: s3Bucket,
-			Key:    "devel/kubernetes-bootstrap",
-			Source: findBootstrap(),
-			Public: true,
-		}
+	minionConfiguration := &tasks.AutoscalingLaunchConfiguration{
+		Name: String(clusterID + "-minion-group"),
+		InstanceCommonConfig: tasks.InstanceCommonConfig{
+			SSHKey:              sshKey,
+			SecurityGroups:      []*tasks.SecurityGroup{minionSG},
+			IAMInstanceProfile:  iamMinionInstanceProfile,
+			ImageID:             String(imageID),
+			InstanceType:        String(instanceType),
+			AssociatePublicIP:   Bool(true),
+			BlockDeviceMappings: minionBlockDeviceMappings,
+			UserData:            minionUserData,
+		},
+	}
 
-		s3Resources := []tasks.Item{
-			s3Bucket,
-			s3KubernetesFile,
-			s3BootstrapFile,
-			s3SaltFile,
-		}
+	minionGroup := &tasks.AutoscalingGroup{
+		Name:                String(clusterID + "-minion-group"),
+		LaunchConfiguration: minionConfiguration,
+		MinSize:             Int64(int64(minionCount)),
+		MaxSize:             Int64(int64(minionCount)),
+		Subnet:              subnet,
+		Tags: map[string]string{
+			"Role": "minion",
+		},
+	}
 
-		glog.Info("Processing S3 resources")
-		renderItems(s3Resources, cloud, target)
+	resources := []tasks.Item{
+		iamMasterRole, iamMasterRolePolicy, iamMasterInstanceProfile, iamMasterInstanceProfileRole,
+		iamMinionRole, iamMinionRolePolicy, iamMinionInstanceProfile, iamMinionInstanceProfileRole,
+		sshKey, vpc, subnet, igw,
+		routeTable, route,
+		masterSG, minionSG,
+		masterInstance,
 
-		config.ServerBinaryTarURL = s3KubernetesFile.PublicURL()
-		config.SaltTarURL = s3SaltFile.PublicURL()
-		config.BootstrapURL = s3BootstrapFile.PublicURL()
+		minionConfiguration,
+		minionGroup,
+	}
 
-		masterPV := &tasks.PersistentVolume{
-			AZ:         az,
-			Size:       masterVolumeSize,
-			VolumeType: volumeType,
-			NameTag:    clusterID + "-master-pd",
-		}
+	resources = append(resources, masterSG.AllowFrom(masterSG))
+	resources = append(resources, masterSG.AllowFrom(minionSG))
+	resources = append(resources, minionSG.AllowFrom(masterSG))
+	resources = append(resources, minionSG.AllowFrom(minionSG))
 
-		glog.Info("Processing master volume resource")
-		masterPVResources := []tasks.BashRenderable{
-			masterPV,
-		}
-		renderItems(masterPVResources, cloud, target)
+	// SSH is open to the world
+	resources = append(resources, minionSG.AllowTCP("0.0.0.0/0", 22, 22))
+	resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 22, 22))
 
-		config.MasterVolume = target.ReadVar(masterPV)
+	// HTTPS to the master is allowed (for API access)
+	resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 443, 443))
 
-		iamMasterRole := &tasks.IAMRole{
-			Name:               "kubernetes-master",
-			RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-role.json"),
-		}
-		iamMasterRolePolicy := &tasks.IAMRolePolicy{
-			Role:           iamMasterRole,
-			Name:           "kubernetes-master",
-			PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-policy.json"),
-		}
-		iamMasterInstanceProfile := &tasks.IAMInstanceProfile{
-			Name: "kubernetes-master",
-			Role: iamMasterRole,
-		}
-
-		iamMinionRole := &tasks.IAMRole{
-			Name:               "kubernetes-minion",
-			RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-role.json"),
-		}
-		iamMinionRolePolicy := &tasks.IAMRolePolicy{
-			Role:           iamMinionRole,
-			Name:           "kubernetes-minion",
-			PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-policy.json"),
-		}
-		iamMinionInstanceProfile := &tasks.IAMInstanceProfile{
-			Name: "kubernetes-minion",
-			Role: iamMinionRole,
-		}
-
-		sshKey := &tasks.SSHKey{Name: "kubernetes-" + clusterID, PublicKey: &tasks.FileResource{Path: "~/.ssh/justin2015.pub"}}
-		vpc := &tasks.VPC{CIDR: "172.20.0.0/16"}
-		subnet := &tasks.Subnet{VPC: vpc, AZ: az, CIDR: "172.20.0.0/24"}
-		igw := &tasks.InternetGateway{VPC: vpc}
-		routeTable := &tasks.RouteTable{Subnet: subnet}
-		route := &tasks.Route{RouteTable: routeTable, CIDR: "0.0.0.0/0", InternetGateway: igw}
-		masterSG := &tasks.SecurityGroup{
-			Name:        "kubernetes-master-" + clusterID,
-			Description: "Security group for master nodes",
-			VPC:         vpc}
-		minionSG := &tasks.SecurityGroup{
-			Name:        "kubernetes-minion-" + clusterID,
-			Description: "Security group for minion nodes",
-			VPC:         vpc}
-
-		masterUserData := &tasks.MasterScript{
-			Config: &config,
-		}
-
-		masterBlockDeviceMappings := []ec2.BlockDeviceMapping{}
-
-		// Be sure to map all the ephemeral drives.  We can specify more than we actually have.
-		// TODO: Actually mount the correct number (especially if we have more), though this is non-trivial, and
-		//  only affects the big storage instance types, which aren't a typical use case right now.
-		for i := 0; i < 4; i++ {
-			bdm := &ec2.BlockDeviceMapping{
-				DeviceName:  aws.String("/dev/sd" + string('c'+i)),
-				VirtualName: aws.String("ephemeral" + strconv.Itoa(i)),
-			}
-			masterBlockDeviceMappings = append(masterBlockDeviceMappings, *bdm)
-		}
-
-		minionBlockDeviceMappings := masterBlockDeviceMappings
-		minionUserData := &tasks.MinionScript{
-			Config: &config,
-		}
-
-		masterInstance := &tasks.Instance{
-			NameTag: clusterID + "-master",
-			InstanceConfig: tasks.InstanceConfig{
-				Subnet:              subnet,
-				SSHKey:              sshKey,
-				SecurityGroups:      []*tasks.SecurityGroup{masterSG},
-				IAMInstanceProfile:  iamMasterInstanceProfile,
-				ImageID:             imageID,
-				InstanceType:        instanceType,
-				AssociatePublicIP:   true,
-				PrivateIPAddress:    masterInternalIP,
-				BlockDeviceMappings: masterBlockDeviceMappings,
-				UserData:            masterUserData,
-			},
-			Tags: map[string]string{"Role": "master"},
-		}
-
-		minionConfiguration := &tasks.AutoscalingLaunchConfiguration{
-			Name: clusterID + "-minion-group",
-			InstanceConfig: tasks.InstanceConfig{
-				SSHKey:              sshKey,
-				SecurityGroups:      []*tasks.SecurityGroup{minionSG},
-				IAMInstanceProfile:  iamMinionInstanceProfile,
-				ImageID:             imageID,
-				InstanceType:        instanceType,
-				AssociatePublicIP:   true,
-				BlockDeviceMappings: minionBlockDeviceMappings,
-				UserData:            minionUserData,
-			},
-		}
-
-		minionGroup := &tasks.AutoscalingGroup{
-			Name:                clusterID + "-minion-group",
-			LaunchConfiguration: minionConfiguration,
-			MinSize:             minionCount,
-			MaxSize:             minionCount,
-			Subnet:              subnet,
-			Tags: map[string]string{
-				"Role": "minion",
-			},
-		}
-
-		resources := []tasks.BashRenderable{
-			iamMasterRole, iamMasterRolePolicy, iamMasterInstanceProfile,
-			iamMinionRole, iamMinionRolePolicy, iamMinionInstanceProfile,
-			sshKey, vpc, subnet, igw,
-			routeTable, route,
-			masterSG, minionSG,
-			masterInstance,
-
-			minionConfiguration,
-			minionGroup,
-		}
-
-		resources = append(resources, masterSG.AllowFrom(masterSG))
-		resources = append(resources, masterSG.AllowFrom(minionSG))
-		resources = append(resources, minionSG.AllowFrom(masterSG))
-		resources = append(resources, minionSG.AllowFrom(minionSG))
-
-		// SSH is open to the world
-		resources = append(resources, minionSG.AllowTCP("0.0.0.0/0", 22, 22))
-		resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 22, 22))
-
-		// HTTPS to the master is allowed (for API access)
-		resources = append(resources, masterSG.AllowTCP("0.0.0.0/0", 443, 443))
-
-		glog.Info("Processing main resources")
-		renderItems(resources, cloud, target)
-	*/
+	glog.Info("Processing main resources")
+	renderItems(context, resources...)
 
 	target.DebugDump()
 

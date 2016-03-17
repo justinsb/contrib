@@ -24,6 +24,11 @@ func (s *IAMInstanceProfileRole) Prefix() string {
 func (e *IAMInstanceProfileRole) find(c *Context) (*IAMInstanceProfileRole, error) {
 	cloud := c.Cloud
 
+	if e.Role == nil || e.Role.ID == nil {
+		return nil, nil
+	}
+	roleID := *e.Role.ID
+
 	request := &iam.GetInstanceProfileInput{InstanceProfileName: e.InstanceProfile.Name}
 
 	response, err := cloud.IAM.GetInstanceProfile(request)
@@ -33,7 +38,7 @@ func (e *IAMInstanceProfileRole) find(c *Context) (*IAMInstanceProfileRole, erro
 
 	ip := response.InstanceProfile
 	for _, role := range ip.Roles {
-		if aws.StringValue(role.RoleId) != *e.Role.ID {
+		if aws.StringValue(role.RoleId) != roleID {
 			continue
 		}
 		actual := &IAMInstanceProfileRole{}

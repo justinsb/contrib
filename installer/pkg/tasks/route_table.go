@@ -12,9 +12,8 @@ type RouteTableRenderer interface {
 }
 
 type RouteTable struct {
-	ID    *string
-	VPC   *VPC
-	VPCID *string
+	ID  *string
+	VPC *VPC
 }
 
 func (s *RouteTable) Prefix() string {
@@ -41,7 +40,7 @@ func (e *RouteTable) find(c *Context) (*RouteTable, error) {
 		}
 		rt := response.RouteTables[0]
 		actual.ID = rt.RouteTableId
-		actual.VPCID = rt.VpcId
+		actual.VPC = &VPC{ID: rt.VpcId}
 		glog.V(2).Infof("found matching RouteTable %q", *actual.ID)
 	}
 
@@ -71,8 +70,8 @@ func (e *RouteTable) Run(c *Context) error {
 
 func (s *RouteTable) checkChanges(a, e, changes *RouteTable) error {
 	if a != nil {
-		if changes.VPCID != nil {
-			return InvalidChangeError("Cannot change RouteTable VPC", changes.VPCID, e.VPCID)
+		if changes.VPC != nil && changes.VPC.ID != nil {
+			return InvalidChangeError("Cannot change RouteTable VPC", changes.VPC.ID, e.VPC.ID)
 		}
 	}
 	return nil
@@ -80,11 +79,7 @@ func (s *RouteTable) checkChanges(a, e, changes *RouteTable) error {
 
 func (t *AWSAPITarget) RenderRouteTable(a, e, changes *RouteTable) error {
 	if a == nil {
-		vpcID := e.VPCID
-		if vpcID == nil && e.VPC != nil {
-			vpcID = e.VPC.ID
-		}
-
+		vpcID := e.VPC.ID
 		if vpcID == nil {
 			return MissingValueError("Must specify VPC for RouteTable create")
 		}
@@ -109,14 +104,7 @@ func (t *AWSAPITarget) RenderRouteTable(a, e, changes *RouteTable) error {
 func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
 	t.CreateVar(e)
 	if a == nil {
-		vpcID := StringValue(e.VPCID)
-		if vpcID == "" {
-			vpcID = t.ReadVar(e.VPC)
-		}
-
-		if vpcID == "" {
-			return MissingValueError("Must specify VPC for RouteTable create")
-		}
+		vpcID := t.ReadVar(e.VPC)
 
 		glog.V(2).Infof("Creating RouteTable with VPC: %q", vpcID)
 

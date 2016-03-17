@@ -4,62 +4,132 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 )
 
 type PersistentVolume struct {
-	AZ         string
-	VolumeType string
-	Size       int
-	NameTag    string
+	ID               *string
+	AvailabilityZone *string
+	VolumeType       *string
+	Size             *int64
+	Name             *string
 }
 
-func (v *PersistentVolume) Prefix() string {
-	return "Volume"
+type PersistentVolumeRenderer interface {
+	RenderPersistentVolume(actual, expected, changes *PersistentVolume) error
 }
 
-func (v *PersistentVolume) String() string {
-	return fmt.Sprintf("Peristent Volume (NameTag=%s)", v.NameTag)
+func (s *PersistentVolume) Prefix() string {
+	return "PersistentVolume"
 }
 
-func (v *PersistentVolume) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	var existing *ec2.Volume
+func (e *PersistentVolume) find(c *Context) (*PersistentVolume, error) {
+	cloud := c.Cloud
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("tag:Name", v.NameTag))
+	filters = append(filters, newEc2Filter("tag:Name", *e.Name))
 	request := &ec2.DescribeVolumesInput{
 		Filters: filters,
 	}
 
 	response, err := cloud.EC2.DescribeVolumes(request)
 	if err != nil {
-		return fmt.Errorf("error listing volumes: %v", err)
+		return nil, fmt.Errorf("error listing volumes: %v", err)
 	}
 
-	if response != nil && len(response.Volumes) != 0 {
-		if len(response.Volumes) != 1 {
-			glog.Fatalf("found multiple volumes with name: %s", v.NameTag)
+	if response == nil || len(response.Volumes) == 0 {
+		return nil, nil
+	}
+
+	if len(response.Volumes) != 1 {
+		return nil, fmt.Errorf("found multiple Volumes with name: %s", *e.Name)
+	}
+	glog.V(2).Info("found existing volume")
+	v := response.Volumes[0]
+	actual := &PersistentVolume{}
+	actual.ID = v.VolumeId
+	actual.AvailabilityZone = v.AvailabilityZone
+	actual.VolumeType = v.VolumeType
+	actual.Size = v.Size
+	actual.Name = e.Name
+	return actual, nil
+}
+
+func (e *PersistentVolume) Run(c *Context) error {
+	a, err := e.find(c)
+	if err != nil {
+		return err
+	}
+
+	changes := &PersistentVolume{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(PersistentVolumeRenderer)
+	return target.RenderPersistentVolume(a, e, changes)
+}
+
+func (s *PersistentVolume) checkChanges(a, e, changes *PersistentVolume) error {
+	if a == nil {
+		if e.Name == nil {
+			return MissingValueError("Name must be specified when creating a PersistentVolume")
 		}
-		glog.V(2).Info("found existing volume")
-		existing = response.Volumes[0]
+	}
+	if a != nil {
+		if changes.ID != nil {
+			return InvalidChangeError("Cannot change PersistentVolume ID", changes.ID, e.ID)
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderPersistentVolume(a, e, changes *PersistentVolume) error {
+	if a == nil {
+		glog.V(2).Infof("Creating PersistentVolume with Name:%q", *e.Name)
+
+		request := &ec2.CreateVolumeInput{}
+		request.Size = e.Size
+		request.AvailabilityZone = e.AvailabilityZone
+		request.VolumeType = e.VolumeType
+
+		response, err := t.cloud.EC2.CreateVolume(request)
+		if err != nil {
+			return fmt.Errorf("error creating PersistentVolume: %v", err)
+		}
+
+		e.ID = response.VolumeId
 	}
 
-	output.CreateVar(v)
-	if existing == nil {
-		glog.V(2).Info("volume not found; will create: ", v)
-		output.AddEC2Command("create-volume",
-			"--availability-zone", v.AZ,
-			"--volume-type", v.VolumeType,
-			"--size", strconv.Itoa(v.Size),
-			"--query", "VolumeId").AssignTo(v)
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) error {
+	t.CreateVar(e)
+	if a == nil {
+		glog.V(2).Infof("Creating PersistentVolume with Name:%q", *e.Name)
+
+		t.AddEC2Command("create-volume",
+			"--availability-zone", *e.AvailabilityZone,
+			"--volume-type", *e.VolumeType,
+			"--size", strconv.FormatInt(*e.Size, 10),
+			"--query", "VolumeId").AssignTo(e)
 	} else {
-		output.AddAssignment(v, aws.StringValue(existing.VolumeId))
+		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	tags := cloud.Tags()
-	tags["Name"] = v.NameTag
+	//tags := cloud.Tags()
+	//tags["Name"] = v.NameTag
+	//
+	//return t.AddAWSTags(tags, v, "volume")
 
-	return output.AddAWSTags(tags, v, "volume")
+	return nil
+	//return output.AddAWSTags(cloud.Tags(), r, "route-table-association")
 }

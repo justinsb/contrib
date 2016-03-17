@@ -3,80 +3,136 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 )
 
 type S3Bucket struct {
-	Name         string
-	CreateRegion string
+	Name     *string
+	Region   *string
 
-	rendered bool
-	region   string
-	exists   bool
+	//rendered bool
+	//exists   bool
 }
 
-func (b *S3Bucket) String() string {
-	return fmt.Sprintf("S3Bucket  (name=%s)", b.Name)
+type S3BucketRenderer interface {
+	RenderS3Bucket(actual, expected, changes *S3Bucket) error
 }
 
-func (b *S3Bucket) Region() string {
-	if !b.rendered {
-		glog.Fatalf("not yet rendered")
-	}
-	return b.region
+func (s *S3Bucket) Prefix() string {
+	return "S3Bucket"
 }
 
-func (b *S3Bucket) Exists() bool {
-	if !b.rendered {
-		glog.Fatalf("not yet rendered")
-	}
-	return b.exists
-}
-
-func (b *S3Bucket) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	var existing *s3.GetBucketLocationOutput
-
-	name := b.Name
+func (e*S3Bucket) findRegionIfExists(c*Context) (string, bool, error) {
+	cloud := c.Cloud
 
 	request := &s3.GetBucketLocationInput{
-		Bucket: aws.String(name),
+		Bucket: e.Name,
 	}
 
-	response, err := cloud.S3.GetBucketLocation(request)
+	response, err := cloud.GetS3(cloud.Region).GetBucketLocation(request)
 	if err != nil {
 		if awsError, ok := err.(awserr.Error); ok {
 			if awsError.Code() == "NoSuchBucket" {
-				err = nil
-				response = nil
+				return "", false, nil
 			}
 		}
+		return "", false, fmt.Errorf("error getting bucket location: %v", err)
 	}
+
+	region := *response.LocationConstraint
+	return region, true, nil
+}
+
+func (e *S3Bucket) find(c *Context) (*S3Bucket, error) {
+	region, exists, err := e.findRegionIfExists(c)
 	if err != nil {
-		return fmt.Errorf("error getting bucket location: %v", err)
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
 	}
 
-	if response != nil && response.LocationConstraint != nil {
-		glog.V(2).Info("found existing S3 bucket")
-		existing = response
+	glog.V(2).Info("found existing S3 bucket")
+	actual := &S3Bucket{}
+	actual.Name = e.Name
+	actual.Region = &region
+	return actual, nil
+}
+
+func (e *S3Bucket) Run(c *Context) error {
+	a, err := e.find(c)
+	if err != nil {
+		return err
 	}
 
-	region := b.CreateRegion
-	if existing == nil {
-		glog.V(2).Info("s3 bucket not found; will create: ", b)
+	changes := &S3Bucket{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(S3BucketRenderer)
+	return target.RenderS3Bucket(a, e, changes)
+}
+
+func (s *S3Bucket) checkChanges(a, e, changes *S3Bucket) error {
+	if a != nil {
+		if e.Name == nil {
+			return MissingValueError("Name is required when creating S3Bucket")
+		}
+		if changes.Region != nil {
+			return InvalidChangeError("Cannot change region of existing S3Bucket", a.Region, e.Region)
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderS3Bucket(a, e, changes *S3Bucket) error {
+	if a == nil {
+		glog.V(2).Infof("Creating S3Bucket with Name:%q", *e.Name)
+
+		request := &s3.CreateBucketInput{}
+		request.Bucket = e.Name
+
+		_, err := t.cloud.GetS3(*e.Region).CreateBucket(request)
+		if err != nil {
+			return fmt.Errorf("error creating S3Bucket: %v", err)
+		}
+	}
+
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderS3Bucket(a, e, changes *S3Bucket) error {
+	if a == nil {
+		glog.V(2).Infof("Creating S3Bucket with Name:%q", *e.Name)
+
 		args := []string{"mb"}
-		args = append(args, "s3://"+name)
+		args = append(args, "s3://" + *e.Name)
 
-		output.AddS3Command(b.CreateRegion, args...)
-	} else {
-		region = aws.StringValue(existing.LocationConstraint)
+		t.AddS3Command(*e.Region, args...)
 	}
-
-	b.rendered = true
-	b.exists = existing != nil
-	b.region = region
 
 	return nil
 }
+
+//func (b *S3Bucket) Region() string {
+//	if !b.rendered {
+//		glog.Fatalf("not yet rendered")
+//	}
+//	return b.region
+//}
+
+//func (b *S3Bucket) exists() bool {
+//	if !b.rendered {
+//		glog.Fatalf("not yet rendered")
+//	}
+//	return b.exists
+//}

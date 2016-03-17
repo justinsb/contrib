@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
+"github.com/aws/aws-sdk-go/aws"
 )
 
 type IAMRolePolicyRenderer interface {
@@ -38,7 +39,9 @@ func (e *IAMRolePolicy) find(c *Context) (*IAMRolePolicy, error) {
 	p := response
 	actual := &IAMRolePolicy{}
 	actual.Role = &IAMRole{Name: p.RoleName}
-	actual.PolicyDocument = p.PolicyDocument
+	if p.PolicyDocument != nil {
+		actual.PolicyDocument = NewStringResource(*p.PolicyDocument)
+	}
 	actual.Name = p.PolicyName
 	return actual, nil
 }
@@ -77,12 +80,17 @@ func (t *AWSAPITarget) RenderIAMRolePolicy(a, e, changes *IAMRolePolicy) error {
 	if a == nil {
 		glog.V(2).Infof("Creating IAMRolePolicy")
 
+		policy, err := ResourceAsString(e.PolicyDocument)
+		if err != nil {
+			return fmt.Errorf("error rendering PolicyDocument: %v", err)
+		}
+
 		request := &iam.PutRolePolicyInput{}
-		request.PolicyDocument = e.PolicyDocument
+		request.PolicyDocument = aws.String(policy)
 		request.RoleName = e.Name
 		request.PolicyName = e.Name
 
-		_, err := t.cloud.IAM.PutRolePolicy(request)
+		_, err = t.cloud.IAM.PutRolePolicy(request)
 		if err != nil {
 			return fmt.Errorf("error creating IAMRolePolicy: %v", err)
 		}

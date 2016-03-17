@@ -15,66 +15,121 @@ import (
 )
 
 type S3File struct {
-	Bucket *S3Bucket
-	Key    string
-	Source Resource
-	Public bool
+	Bucket    *S3Bucket
+	Key       *string
+	Source    Resource
+	Public    *bool
 
-	rendered  bool
-	publicURL string
+	//rendered  bool
+	publicURL *string
+
+	etag      *string
 }
 
-func (f *S3File) PublicURL() string {
-	if !f.rendered {
-		glog.Fatalf("not yet rendered")
+type S3FileRenderer interface {
+	RenderS3File(actual, expected, changes *S3File) error
+}
+
+func (s *S3File) Prefix() string {
+	return "S3File"
+}
+
+func (e *S3File) find(c *Context) (*S3File, error) {
+	cloud := c.Cloud
+
+	region, exists, err := e.Bucket.findRegionIfExists(c)
+	if err != nil {
+		return nil, err
 	}
-	return f.publicURL
-}
+	if !exists {
+		return nil, nil
+	}
 
-func (f *S3File) String() string {
-	return fmt.Sprintf("S3File (s3://%s/%s)", f.Bucket.Name, f.Key)
-}
+	request := &s3.HeadObjectInput{
+		Bucket: e.Bucket.Name,
+		Key:    e.Key,
+	}
 
-func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	region := f.Bucket.Region()
-
-	var existing *s3.HeadObjectOutput
-
-	if f.Bucket.Exists() {
-
-		request := &s3.HeadObjectInput{
-			Bucket: aws.String(f.Bucket.Name),
-			Key:    aws.String(f.Key),
-		}
-
-		// TODO: Target correct region
-		response, err := cloud.S3.HeadObject(request)
-		if err != nil {
-			if requestFailure, ok := err.(awserr.RequestFailure); ok {
-				if requestFailure.StatusCode() == 404 {
-					err = nil
-					response = nil
-				}
+	response, err := cloud.GetS3(region).HeadObject(request)
+	if err != nil {
+		if requestFailure, ok := err.(awserr.RequestFailure); ok {
+			if requestFailure.StatusCode() == 404 {
+				return nil, nil
 			}
 		}
-		if err != nil {
-			return fmt.Errorf("error getting S3 file metadata: %v", err)
-		}
-
-		if response != nil {
-			glog.V(2).Info("found existing S3 file")
-			existing = response
-		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("error getting S3 file metadata: %v", err)
 	}
 
-	needToUpload := true
+	actual := &S3File{}
+	actual.Bucket = e.Bucket
+	actual.Key = e.Key
+	actual.etag = response.ETag
+	return actual, nil
+}
 
-	localPath, err := output.AddResource(f.Source)
+func (e *S3File) Run(c *Context) error {
+	a, err := e.find(c)
 	if err != nil {
 		return err
 	}
 
-	if existing != nil {
+	changes := &S3File{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(S3FileRenderer)
+	return target.RenderS3File(a, e, changes)
+}
+
+func (s *S3File) checkChanges(a, e, changes *S3File) error {
+	if a != nil {
+		if e.Key == nil {
+			return MissingValueError("Key is required when creating S3File")
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderS3File(a, e, changes *S3File) error {
+	panic("S3 Render to AWSAPITarget not implemented")
+	//if a == nil {
+	//	glog.V(2).Infof("Creating S3File with Name:%q", *e.Name)
+	//
+	//	request := &s3.CreateBucketInput{}
+	//	request.Bucket = e.Name
+	//
+	//	_, err := t.cloud.GetS3(*e.Region).CreateBucket(request)
+	//	if err != nil {
+	//		return fmt.Errorf("error creating S3File: %v", err)
+	//	}
+	//}
+	//
+	//return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderS3File(a, e, changes *S3File) error {
+	needToUpload := true
+
+	localPath, err := t.AddResource(e.Source)
+	if err != nil {
+		return err
+	}
+
+	if e.Bucket.Region == nil {
+		panic("Bucket region not set")
+	}
+	region := *e.Bucket.Region
+
+	if a != nil {
 		hasher := md5.New()
 		f, err := os.Open(localPath)
 		if err != nil {
@@ -90,7 +145,7 @@ func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 			return fmt.Errorf("error while hashing local file: %v", err)
 		}
 		localHash := hex.EncodeToString(hasher.Sum(nil))
-		s3Hash := aws.StringValue(existing.ETag)
+		s3Hash := aws.StringValue(e.etag)
 		s3Hash = strings.Replace(s3Hash, "\"", "", -1)
 		if localHash == s3Hash {
 			glog.V(2).Info("s3 files match; skipping upload")
@@ -102,21 +157,25 @@ func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 	if needToUpload {
 		// We use put-object instead of cp so that we don't do multipart, so the etag is the simple md5
 		args := []string{"put-object"}
-		args = append(args, "--bucket", f.Bucket.Name)
-		args = append(args, "--key", f.Key)
+		args = append(args, "--bucket", *e.Bucket.Name)
+		args = append(args, "--key", *e.Key)
 		args = append(args, "--body", localPath)
-		output.AddS3APICommand(region, args...)
+		t.AddS3APICommand(region, args...)
 	}
 
 	publicURL := ""
-	if f.Public {
+	if changes.Public != nil {
 		// TODO: Check existing?
 
+		if !*changes.Public {
+			panic("Only change to make S3File public is implemented")
+		}
+
 		args := []string{"put-object-acl"}
-		args = append(args, "--bucket", f.Bucket.Name)
-		args = append(args, "--key", f.Key)
+		args = append(args, "--bucket", *e.Bucket.Name)
+		args = append(args, "--key", *e.Key)
 		args = append(args, "--grant-read", "uri=\"http://acs.amazonaws.com/groups/global/AllUsers\"")
-		output.AddS3APICommand(region, args...)
+		t.AddS3APICommand(region, args...)
 
 		publicURLBase := "https://s3-" + region + ".amazonaws.com"
 		if region == "us-east-1" {
@@ -124,11 +183,25 @@ func (f *S3File) RenderBash(cloud *AWSCloud, output *BashTarget) error {
 			publicURLBase = "https://s3.amazonaws.com"
 		}
 
-		publicURL = publicURLBase + "/" + f.Bucket.Name + "/" + f.Key
+		publicURL = publicURLBase + "/" + *e.Bucket.Name + "/" + *e.Key
 	}
 
-	f.rendered = true
-	f.publicURL = publicURL
+	//e.rendered = true
+	e.publicURL = &publicURL
 
 	return nil
 }
+
+func (f *S3File) PublicURL() string {
+	if f.publicURL == nil {
+		panic("S3File not rendered or not public")
+	}
+	return *f.publicURL
+}
+
+func (f *S3File) String() string {
+	return fmt.Sprintf("S3File (s3://%s/%s)", *f.Bucket.Name, *f.Key)
+}
+
+
+

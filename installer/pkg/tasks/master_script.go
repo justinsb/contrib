@@ -107,7 +107,7 @@ func (m *MinionScript) Prefix() string {
 	return "minion_script"
 }
 
-func (m *MinionScript) Write(w io.Writer) error {
+func (m *MinionScript) WriteTo(w io.Writer) error {
 	var s ScriptWriter
 
 	// We send this to the ami as a startup script in the user-data field.  Requires a compatible ami
@@ -129,7 +129,7 @@ func (m *MasterScript) Prefix() string {
 	return "master_script"
 }
 
-func (m *MasterScript) Write(w io.Writer) error {
+func (m *MasterScript) WriteTo(w io.Writer) error {
 	var s ScriptWriter
 
 	// We send this to the ami as a startup script in the user-data field.  Requires a compatible ami

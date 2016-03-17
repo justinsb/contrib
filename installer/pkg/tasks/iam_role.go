@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 type IAMRoleRenderer interface {
@@ -14,7 +15,7 @@ type IAMRoleRenderer interface {
 type IAMRole struct {
 	ID                 *string
 	Name               *string
-	RolePolicyDocument Resource
+	RolePolicyDocument Resource // "inline" policy
 }
 
 func (s *IAMRole) Prefix() string {
@@ -73,8 +74,13 @@ func (t *AWSAPITarget) RenderIAMRole(a, e, changes *IAMRole) error {
 	if a == nil {
 		glog.V(2).Infof("Creating IAMRole with Name:%q", *e.Name)
 
+		policy, err := ResourceAsString(e.RolePolicyDocument)
+		if err != nil {
+			return fmt.Errorf("error rendering PolicyDocument: %v", err)
+		}
+
 		request := &iam.CreateRoleInput{}
-		request.AssumeRolePolicyDocument = e.RolePolicyDocument
+		request.AssumeRolePolicyDocument = aws.String(policy)
 		request.RoleName = e.Name
 
 		response, err := t.cloud.IAM.CreateRole(request)

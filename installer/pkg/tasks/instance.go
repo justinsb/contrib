@@ -1,9 +1,7 @@
 package tasks
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -15,11 +13,14 @@ type InstanceRenderer interface {
 }
 
 type Instance struct {
-	ID *string
-	InstanceConfig
+	ID               *string
+	InstanceCommonConfig
 
-	NameTag string
-	Tags    map[string]string
+	Subnet           *Subnet
+	PrivateIPAddress *string
+
+	Name             *string
+	Tags             map[string]string
 }
 
 func (s *Instance) Prefix() string {
@@ -30,7 +31,7 @@ func (e *Instance) find(c *Context) (*Instance, error) {
 	cloud := c.Cloud
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("tag:Name", e.NameTag))
+	filters = append(filters, newEc2Filter("tag:Name", *e.Name))
 	filters = append(filters, newEc2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
 	request := &ec2.DescribeInstancesInput{
 		Filters: filters,
@@ -41,27 +42,28 @@ func (e *Instance) find(c *Context) (*Instance, error) {
 		return nil, fmt.Errorf("error listing instances: %v", err)
 	}
 
-	if response != nil {
-		instances := []*ec2.Instance{}
+	instances := []*ec2.Instance{}
+	if response == nil {
 		for _, reservation := range response.Reservations {
 			for _, instance := range reservation.Instances {
 				instances = append(instances, instance)
 			}
 		}
-
-		if len(instances) != 0 {
-			if len(instances) != 1 {
-				glog.Fatalf("found multiple instances with name: %s", e.NameTag)
-			}
-			glog.V(2).Info("found existing instance")
-			i := instances[0]
-			actual := &Instance{}
-			actual.ID = i.InstanceId
-			return actual, nil
-		}
 	}
 
-	return nil, nil
+	if len(instances) == 0 {
+		return nil, nil
+	}
+
+	if len(instances) != 1 {
+		return nil, fmt.Errorf("found multiple Instances with name: %s", e.Name)
+	}
+
+	glog.V(2).Info("found existing instance")
+	i := instances[0]
+	actual := &Instance{}
+	actual.ID = i.InstanceId
+	return actual, nil
 }
 
 func (e *Instance) Run(c *Context) error {
@@ -98,16 +100,61 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 	if a == nil {
 		glog.V(2).Infof("Creating Instance with Name:%q", *e.Name)
 
-		request := &iam.CreateRoleInput{}
-		request.AssumeRolePolicyDocument = e.RolePolicyDocument
-		request.RoleName = e.Name
+		request := &ec2.RunInstancesInput{}
+		request.ImageId = e.ImageID
+		request.InstanceType = e.InstanceType
+		if e.SSHKey != nil {
+			request.KeyName = e.SSHKey.Name
+		}
+		securityGroupIDs := []*string{}
+		for _, sg := range e.SecurityGroups {
+			securityGroupIDs = append(securityGroupIDs, sg.ID)
+		}
+		request.SecurityGroups = securityGroupIDs
+		request.NetworkInterfaces = []*ec2.InstanceNetworkInterfaceSpecification{
+			{
+				DeviceIndex:aws.Int64(0),
+				AssociatePublicIpAddress:e.AssociatePublicIP,
+				SubnetId:e.Subnet.ID,
+			},
+		}
+		request.PrivateIpAddress = e.PrivateIPAddress
 
-		response, err := t.cloud.IAM.CreateRole(request)
+		if e.BlockDeviceMappings != nil {
+			request.BlockDeviceMappings = []*ec2.BlockDeviceMapping{}
+			for _, b := range e.BlockDeviceMappings {
+				request.BlockDeviceMappings = append(request.BlockDeviceMappings, b.ToEC2())
+			}
+		}
+
+		if e.UserData != nil {
+			d, err := ResourceAsString(e.UserData)
+			if err != nil {
+				return fmt.Errorf("error rendering Instance UserData: %v", err)
+			}
+			request.UserData = aws.String(d)
+		}
+		if e.IAMInstanceProfile != nil {
+			request.IamInstanceProfile = &ec2.IamInstanceProfileSpecification{
+				Name: e.IAMInstanceProfile.Name,
+			}
+		}
+
+		response, err := t.cloud.EC2.RunInstances(request)
 		if err != nil {
 			return fmt.Errorf("error creating Instance: %v", err)
 		}
 
-		e.ID = response.Role.RoleId
+		e.ID = response.Instances[0].InstanceId
+
+		tags := make(map[string]string)
+		for k, v := range e.Tags {
+			tags[k] = v
+		}
+		if e.Name != nil {
+			tags["Name"] = *e.Name
+		}
+		return t.cloud.CreateTags("instance", *e.ID, tags)
 	}
 
 	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
@@ -118,116 +165,38 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 	if a == nil {
 		glog.V(2).Infof("Creating Instance with Name:%q", *e.Name)
 
-		rolePolicyDocument, err := t.AddResource(e.RolePolicyDocument)
-		if err != nil {
-			return err
+		args := []string{"run-instances"}
+		args = append(args, e.buildEC2CreateArgs(t)...)
+
+		if e.Subnet != nil {
+			args = append(args, "--subnet-id", t.ReadVar(e.Subnet))
+		}
+		if e.PrivateIPAddress != nil {
+			args = append(args, "--private-ip-address", *e.PrivateIPAddress)
 		}
 
-		t.AddIAMCommand("create-role",
-			"--role-name", *e.Name,
-			"--assume-role-policy-document", rolePolicyDocument)
+		args = append(args, "--query", "Instances[0].InstanceId")
+
+		t.AddEC2Command(args...).AssignTo(e)
+	} else {
+		t.AddAssignment(e, aws.StringValue(a.ID))
 	}
+
+	//tags := cloud.Tags()
+	tags := make(map[string]string)
+	tags["Name"] = *e.Name
+
+	if e.Tags != nil {
+		for k, v := range e.Tags {
+			tags[k] = v
+		}
+	}
+	//return t.AddAWSTags(tags, i, "instance")
 
 	return nil
 }
 
-// Config common to Instance and ASG LaunchConfiguration
-type InstanceConfig struct {
-	ImageID             string
-	InstanceType        string
-	Subnet              *Subnet
-	SSHKey              *SSHKey
-	SecurityGroups      []*SecurityGroup
-	PrivateIPAddress    string
-	AssociatePublicIP   bool
-	BlockDeviceMappings []ec2.BlockDeviceMapping
-	UserData            Resource
-	IAMInstanceProfile  *IAMInstanceProfile
-}
-
-func (i *InstanceConfig) buildCommonCreateArgs(output *BashTarget) []string {
-	args := []string{}
-	args = append(args, "--image-id", i.ImageID)
-	args = append(args, "--instance-type", i.InstanceType)
-	if i.Subnet != nil {
-		args = append(args, "--subnet-id", output.ReadVar(i.Subnet))
-	}
-	if i.PrivateIPAddress != "" {
-		args = append(args, "--private-ip-address", i.PrivateIPAddress)
-	}
-	if i.SSHKey != nil {
-		args = append(args, "--key-name", i.SSHKey.Name)
-	}
-	if i.AssociatePublicIP {
-		args = append(args, "--associate-public-ip-address")
-	} else {
-		args = append(args, "--no-associate-public-ip-address")
-	}
-	if i.BlockDeviceMappings != nil {
-		j, err := json.Marshal(i.BlockDeviceMappings)
-		if err != nil {
-			glog.Fatalf("error converting BlockDeviceMappings to JSON: %v", err)
-		}
-
-		bdm := string(j)
-		// Hack to remove null values
-		bdm = strings.Replace(bdm, "\"Ebs\":null,", "", -1)
-		bdm = strings.Replace(bdm, "\"NoDevice\":null,", "", -1)
-		bdm = strings.Replace(bdm, "\"VirtualName\":null,", "", -1)
-
-		args = append(args, "--block-device-mappings", bashQuoteString(bdm))
-	}
-	if i.UserData != nil {
-		tempFile, err := output.AddResource(i.UserData)
-		if err != nil {
-			glog.Fatalf("error adding resource: %v", err)
-		}
-		args = append(args, "--user-data", "file://"+tempFile)
-	}
-
-	return args
-}
-
-func (i *InstanceConfig) buildEC2CreateArgs(output *BashTarget) []string {
-	args := i.buildCommonCreateArgs(output)
-	if i.SecurityGroups != nil {
-		ids := ""
-		for _, sg := range i.SecurityGroups {
-			if ids != "" {
-				ids = ids + ","
-			}
-			ids = ids + output.ReadVar(sg)
-		}
-		args = append(args, "--security-group-ids", ids)
-	}
-	if i.IAMInstanceProfile != nil {
-		args = append(args, "--iam-instance-profile", "Name="+i.IAMInstanceProfile.Name)
-	}
-	return args
-}
-
-func (i *InstanceConfig) buildAutoscalingCreateArgs(output *BashTarget) []string {
-	args := i.buildCommonCreateArgs(output)
-	if i.SecurityGroups != nil {
-		ids := ""
-		for _, sg := range i.SecurityGroups {
-			if ids != "" {
-				ids = ids + ","
-			}
-			ids = ids + output.ReadVar(sg)
-		}
-		args = append(args, "--security-groups", ids)
-	}
-	if i.IAMInstanceProfile != nil {
-		args = append(args, "--iam-instance-profile", i.IAMInstanceProfile.Name)
-	}
-	return args
-}
-
-func (i *Instance) Prefix() string {
-	return "Instance"
-}
-
+/*
 func (i *Instance) Destroy(cloud *AWSCloud, output *BashTarget) error {
 	existing, err := i.findExisting(cloud)
 	if err != nil {
@@ -244,35 +213,4 @@ func (i *Instance) Destroy(cloud *AWSCloud, output *BashTarget) error {
 
 	return nil
 }
-
-func (i *Instance) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	existing, err := i.findExisting(cloud)
-	if err != nil {
-		return err
-	}
-	// TODO: Validate existing
-
-	output.CreateVar(i)
-	if existing == nil {
-		glog.V(2).Info("instance not found; will create: ", i)
-		args := []string{"run-instances"}
-		args = append(args, i.buildEC2CreateArgs(output)...)
-
-		args = append(args, "--query", "Instances[0].InstanceId")
-
-		output.AddEC2Command(args...).AssignTo(i)
-	} else {
-		output.AddAssignment(i, aws.StringValue(existing.InstanceId))
-	}
-
-	tags := cloud.Tags()
-	tags["Name"] = i.NameTag
-
-	if i.Tags != nil {
-		for k, v := range i.Tags {
-			tags[k] = v
-		}
-	}
-
-	return output.AddAWSTags(tags, i, "instance")
-}
+*/
