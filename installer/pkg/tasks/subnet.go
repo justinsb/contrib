@@ -73,17 +73,19 @@ func (e *Subnet) Run(c *Context) error {
 }
 
 func (s *Subnet) checkChanges(a, e, changes *Subnet) error {
-	if changes.VPCID != nil {
-		// TODO: Do we want to destroy & recreate the CIDR?
-		return InvalidChangeError("Cannot change subnet VPC", changes.VPCID, e.VPCID)
-	}
-	if changes.AvailabilityZone != nil {
-		// TODO: Do we want to destroy & recreate the CIDR?
-		return InvalidChangeError("Cannot change subnet AvailabilityZone", changes.AvailabilityZone, e.AvailabilityZone)
-	}
-	if changes.CIDR != nil {
-		// TODO: Do we want to destroy & recreate the CIDR?
-		return InvalidChangeError("Cannot change subnet CIDR", changes.CIDR, e.CIDR)
+	if a != nil {
+		if changes.VPCID != nil {
+			// TODO: Do we want to destroy & recreate the CIDR?
+			return InvalidChangeError("Cannot change subnet VPC", changes.VPCID, e.VPCID)
+		}
+		if changes.AvailabilityZone != nil {
+			// TODO: Do we want to destroy & recreate the CIDR?
+			return InvalidChangeError("Cannot change subnet AvailabilityZone", changes.AvailabilityZone, e.AvailabilityZone)
+		}
+		if changes.CIDR != nil {
+			// TODO: Do we want to destroy & recreate the CIDR?
+			return InvalidChangeError("Cannot change subnet CIDR", changes.CIDR, e.CIDR)
+		}
 	}
 	return nil
 }
@@ -121,7 +123,7 @@ func (t *AWSAPITarget) RenderSubnet(a, e, changes *Subnet) error {
 
 func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
 	t.CreateVar(e)
-	if StringValue(a.ID) == "" {
+	if a == nil {
 		if e.CIDR == nil {
 			// TODO: Auto-assign CIDR
 			return MissingValueError("Must specify CIDR for Subnet create")

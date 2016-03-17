@@ -41,7 +41,7 @@ func renderItems(items []tasks.Item, context *tasks.Context) {
 		glog.Info("rendering ", resource)
 		err := resource.Run(context)
 		if err != nil {
-			glog.Fatalf("error rendering resource (%v): %v", err)
+			glog.Fatalf("error rendering resource (%v): %v", resource, err)
 		}
 	}
 }
@@ -167,9 +167,34 @@ func main() {
 
 	vpc := &tasks.VPC{CIDR: String("172.20.0.0/16")}
 	subnet := &tasks.Subnet{VPC: vpc, AvailabilityZone: String(az), CIDR: String("172.20.0.0/24")}
-	//		igw := &tasks.InternetGateway{VPC: vpc}
+	igw := &tasks.InternetGateway{VPC: vpc}
+	routeTable := &tasks.RouteTable{VPC: vpc}
+	rta := &tasks.RouteTableAssociation{RouteTable: routeTable, Subnet: subnet}
+	route := &tasks.Route{RouteTable: routeTable, CIDR: String("0.0.0.0/0"), InternetGateway: igw}
+	masterSG := &tasks.SecurityGroup{
+		Name:        String("kubernetes-master-" + clusterID),
+		Description: String("Security group for master nodes"),
+		VPC:         vpc}
+	minionSG := &tasks.SecurityGroup{
+		Name:        String("kubernetes-minion-" + clusterID),
+		Description: String("Security group for minion nodes"),
+		VPC:         vpc}
+
 	glog.Info("Processing VPC resources")
-	renderItems([]tasks.Item{vpc, subnet}, context)
+	resources := []tasks.Item{vpc, subnet, igw, routeTable, rta, route, masterSG, minionSG}
+
+	resources = append(resources, masterSG.AllowFrom(masterSG))
+	resources = append(resources, masterSG.AllowFrom(minionSG))
+	resources = append(resources, minionSG.AllowFrom(masterSG))
+	resources = append(resources, minionSG.AllowFrom(minionSG))
+
+	iamMasterRole := &tasks.IAMRole{
+		Name:               "kubernetes-master",
+		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-role.json"),
+	}
+	resources = append(resources, iamMasterRole)
+
+	renderItems(resources, context)
 
 	/*
 		instanceType := "m3.medium"

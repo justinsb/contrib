@@ -72,6 +72,7 @@ func (e *VPC) Run(c *Context) error {
 	changes := &VPC{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {
+		glog.V(2).Infof("No changed: %v", e)
 		return nil
 	}
 
@@ -88,6 +89,7 @@ func (v *VPC) String() string {
 }
 
 func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
+	glog.V(2).Infof("Rendering via AWS API: %v", changes)
 	id := StringValue(e.ID)
 	if changes.CIDR != nil {
 		// TODO: Do we want to destroy & recreate the CIDR?
@@ -146,23 +148,26 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 }
 
 func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
+	glog.V(2).Infof("Rendering to bash: %v", changes)
 	t.CreateVar(e)
 
-	if changes.CIDR != nil {
-		// TODO: Do we want to destroy & recreate the CIDR?
-		return InvalidChangeError("VPC did not have the correct CIDR", changes.CIDR, e.CIDR)
-	}
-
-	if StringValue(a.ID) == "" {
+	if a == nil {
 		if e.CIDR == nil {
 			// TODO: Auto-assign CIDR
 			return MissingValueError("Must specify CIDR for VPC create")
 		}
 
+		glog.V(2).Infof("Creating VPC with CIDR: %q", *e.CIDR)
+
 		t.AddEC2Command("create-vpc", "--cidr-block", *e.CIDR, "--query", "Vpc.VpcId").AssignTo(e)
 
 		t.AddAWSTags(t.cloud.Tags(), e, "vpc")
 	} else {
+		if changes.CIDR != nil {
+			// TODO: Do we want to destroy & recreate the CIDR?
+			return InvalidChangeError("VPC did not have the correct CIDR", changes.CIDR, e.CIDR)
+		}
+
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 

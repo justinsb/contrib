@@ -3,38 +3,103 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
 )
 
+type IAMRoleRenderer interface {
+	RenderIAMRole(actual, expected, changes *IAMRole) error
+}
+
 type IAMRole struct {
-	Name               string
+	ID                 *string
+	Name               *string
 	RolePolicyDocument Resource
 }
 
-func (r *IAMRole) String() string {
-	return fmt.Sprintf("IAMRole (name=%s)", r.Name)
+func (s *IAMRole) Prefix() string {
+	return "IAMRole"
 }
 
-func (r *IAMRole) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	request := &iam.GetRoleInput{RoleName: aws.String(r.Name)}
+func (e *IAMRole) find(c *Context) (*IAMRole, error) {
+	cloud := c.Cloud
 
-	existing, err := cloud.IAM.GetRole(request)
+	request := &iam.GetRoleInput{RoleName: e.Name}
+
+	response, err := cloud.IAM.GetRole(request)
 	if err != nil {
-		return fmt.Errorf("error getting role: %v", err)
+		return nil, fmt.Errorf("error getting role: %v", err)
 	}
 
-	if existing == nil {
-		glog.V(2).Info("Role not found; will create: ", r)
+	r := response.Role
+	actual := &IAMRole{}
+	actual.ID = r.RoleId
+	actual.Name = r.RoleName
+	glog.V(2).Infof("found matching IAMRole %q", *actual.ID)
+	return actual, nil
+}
 
-		rolePolicyDocument, err := output.AddResource(r.RolePolicyDocument)
+func (e *IAMRole) Run(c *Context) error {
+	a, err := e.find(c)
+	if err != nil {
+		return err
+	}
+
+	changes := &IAMRole{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(IAMRoleRenderer)
+	return target.RenderIAMRole(a, e, changes)
+}
+
+func (s *IAMRole) checkChanges(a, e, changes *IAMRole) error {
+	if a != nil {
+		if e.Name == nil {
+			return MissingValueError("Name is required when creating IAMRole")
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderIAMRole(a, e, changes *IAMRole) error {
+	if a == nil {
+		glog.V(2).Infof("Creating IAMRole with Name:%q", *e.Name)
+
+		request := &iam.CreateRoleInput{}
+		request.AssumeRolePolicyDocument = e.RolePolicyDocument
+		request.RoleName = e.Name
+
+		response, err := t.cloud.IAM.CreateRole(request)
+		if err != nil {
+			return fmt.Errorf("error creating IAMRole: %v", err)
+		}
+
+		e.ID = response.Role.RoleId
+	}
+
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderIAMRole(a, e, changes *IAMRole) error {
+	t.CreateVar(e)
+	if a == nil {
+		glog.V(2).Infof("Creating IAMRole with Name:%q", *e.Name)
+
+		rolePolicyDocument, err := t.AddResource(e.RolePolicyDocument)
 		if err != nil {
 			return err
 		}
 
-		output.AddIAMCommand("create-role",
-			"--role-name", r.Name,
+		t.AddIAMCommand("create-role",
+			"--role-name", *e.Name,
 			"--assume-role-policy-document", rolePolicyDocument)
 	}
 

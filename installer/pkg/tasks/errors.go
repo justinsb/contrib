@@ -7,5 +7,5 @@ func MissingValueError(message string) error {
 }
 
 func InvalidChangeError(message string, actual, expected interface{}) error {
-	return fmt.Errorf("%s current=%q, desired=%q", actual, expected)
+	return fmt.Errorf("Invalid change: %s current=%q, desired=%q", message, actual, expected)
 }

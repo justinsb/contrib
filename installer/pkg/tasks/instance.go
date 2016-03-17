@@ -10,6 +10,127 @@ import (
 	"github.com/golang/glog"
 )
 
+type InstanceRenderer interface {
+	RenderInstance(actual, expected, changes *Instance) error
+}
+
+type Instance struct {
+	ID *string
+	InstanceConfig
+
+	NameTag string
+	Tags    map[string]string
+}
+
+func (s *Instance) Prefix() string {
+	return "Instance"
+}
+
+func (e *Instance) find(c *Context) (*Instance, error) {
+	cloud := c.Cloud
+
+	filters := cloud.BuildFilters()
+	filters = append(filters, newEc2Filter("tag:Name", e.NameTag))
+	filters = append(filters, newEc2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
+	request := &ec2.DescribeInstancesInput{
+		Filters: filters,
+	}
+
+	response, err := cloud.EC2.DescribeInstances(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing instances: %v", err)
+	}
+
+	if response != nil {
+		instances := []*ec2.Instance{}
+		for _, reservation := range response.Reservations {
+			for _, instance := range reservation.Instances {
+				instances = append(instances, instance)
+			}
+		}
+
+		if len(instances) != 0 {
+			if len(instances) != 1 {
+				glog.Fatalf("found multiple instances with name: %s", e.NameTag)
+			}
+			glog.V(2).Info("found existing instance")
+			i := instances[0]
+			actual := &Instance{}
+			actual.ID = i.InstanceId
+			return actual, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (e *Instance) Run(c *Context) error {
+	a, err := e.find(c)
+	if err != nil {
+		return err
+	}
+
+	changes := &Instance{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(InstanceRenderer)
+	return target.RenderInstance(a, e, changes)
+}
+
+func (s *Instance) checkChanges(a, e, changes *Instance) error {
+	if a != nil {
+		if e.Name == nil {
+			return MissingValueError("Name is required when creating Instance")
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
+	if a == nil {
+		glog.V(2).Infof("Creating Instance with Name:%q", *e.Name)
+
+		request := &iam.CreateRoleInput{}
+		request.AssumeRolePolicyDocument = e.RolePolicyDocument
+		request.RoleName = e.Name
+
+		response, err := t.cloud.IAM.CreateRole(request)
+		if err != nil {
+			return fmt.Errorf("error creating Instance: %v", err)
+		}
+
+		e.ID = response.Role.RoleId
+	}
+
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
+	t.CreateVar(e)
+	if a == nil {
+		glog.V(2).Infof("Creating Instance with Name:%q", *e.Name)
+
+		rolePolicyDocument, err := t.AddResource(e.RolePolicyDocument)
+		if err != nil {
+			return err
+		}
+
+		t.AddIAMCommand("create-role",
+			"--role-name", *e.Name,
+			"--assume-role-policy-document", rolePolicyDocument)
+	}
+
+	return nil
+}
+
 // Config common to Instance and ASG LaunchConfiguration
 type InstanceConfig struct {
 	ImageID             string
@@ -103,54 +224,8 @@ func (i *InstanceConfig) buildAutoscalingCreateArgs(output *BashTarget) []string
 	return args
 }
 
-type Instance struct {
-	InstanceConfig
-
-	NameTag string
-	Tags    map[string]string
-}
-
 func (i *Instance) Prefix() string {
 	return "Instance"
-}
-
-func (i *Instance) String() string {
-	return fmt.Sprintf("Instance (name=%s)", i.NameTag)
-}
-
-func (i *Instance) findExisting(cloud *AWSCloud) (*ec2.Instance, error) {
-	var existing *ec2.Instance
-
-	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("tag:Name", i.NameTag))
-	filters = append(filters, newEc2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
-	request := &ec2.DescribeInstancesInput{
-		Filters: filters,
-	}
-
-	response, err := cloud.EC2.DescribeInstances(request)
-	if err != nil {
-		return nil, fmt.Errorf("error listing instances: %v", err)
-	}
-
-	if response != nil {
-		instances := []*ec2.Instance{}
-		for _, reservation := range response.Reservations {
-			for _, instance := range reservation.Instances {
-				instances = append(instances, instance)
-			}
-		}
-
-		if len(instances) != 0 {
-			if len(instances) != 1 {
-				glog.Fatalf("found multiple instances with name: %s", i.NameTag)
-			}
-			glog.V(2).Info("found existing instance")
-			existing = instances[0]
-		}
-	}
-
-	return existing, nil
 }
 
 func (i *Instance) Destroy(cloud *AWSCloud, output *BashTarget) error {

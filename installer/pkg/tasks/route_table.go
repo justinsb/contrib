@@ -3,56 +3,128 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 )
 
-type RouteTable struct {
-	Subnet *Subnet
+type RouteTableRenderer interface {
+	RenderRouteTable(actual, expected, changes *RouteTable) error
 }
 
-func (r *RouteTable) Prefix() string {
+type RouteTable struct {
+	ID    *string
+	VPC   *VPC
+	VPCID *string
+}
+
+func (s *RouteTable) Prefix() string {
 	return "RouteTable"
 }
 
-func (r *RouteTable) String() string {
-	return fmt.Sprintf("RouteTable (subnet=%s)", r.Subnet)
+func (e *RouteTable) find(c *Context) (*RouteTable, error) {
+	cloud := c.Cloud
+
+	actual := &RouteTable{}
+	request := &ec2.DescribeRouteTablesInput{
+		Filters: cloud.BuildFilters(),
+	}
+
+	response, err := cloud.EC2.DescribeRouteTables(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing RouteTables: %v", err)
+	}
+	if response == nil || len(response.RouteTables) == 0 {
+		return nil, nil
+	} else {
+		if len(response.RouteTables) != 1 {
+			glog.Fatalf("found multiple RouteTables matching tags")
+		}
+		rt := response.RouteTables[0]
+		actual.ID = rt.RouteTableId
+		actual.VPCID = rt.VpcId
+		glog.V(2).Infof("found matching RouteTable %q", *actual.ID)
+	}
+
+	return actual, nil
 }
 
-func (r *RouteTable) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	subnetId, _ := output.FindValue(r.Subnet)
+func (e *RouteTable) Run(c *Context) error {
+	a, err := e.find(c)
+	if err != nil {
+		return err
+	}
 
-	routeTableId := ""
-	if subnetId != "" {
-		request := &ec2.DescribeRouteTablesInput{
-			Filters: []*ec2.Filter{newEc2Filter("association.subnet-id", subnetId)},
+	changes := &RouteTable{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(RouteTableRenderer)
+	return target.RenderRouteTable(a, e, changes)
+}
+
+func (s *RouteTable) checkChanges(a, e, changes *RouteTable) error {
+	if a != nil {
+		if changes.VPCID != nil {
+			return InvalidChangeError("Cannot change RouteTable VPC", changes.VPCID, e.VPCID)
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderRouteTable(a, e, changes *RouteTable) error {
+	if a == nil {
+		vpcID := e.VPCID
+		if vpcID == nil && e.VPC != nil {
+			vpcID = e.VPC.ID
 		}
 
-		response, err := cloud.EC2.DescribeRouteTables(request)
+		if vpcID == nil {
+			return MissingValueError("Must specify VPC for RouteTable create")
+		}
+
+		glog.V(2).Infof("Creating RouteTable with VPC: %q", *vpcID)
+
+		request := &ec2.CreateRouteTableInput{}
+		request.VpcId = vpcID
+
+		response, err := t.cloud.EC2.CreateRouteTable(request)
 		if err != nil {
-			return fmt.Errorf("error listing route tables: %v", err)
+			return fmt.Errorf("error creating RouteTable: %v", err)
 		}
 
-		var existing *ec2.RouteTable
-		if response != nil && len(response.RouteTables) != 0 {
-			if len(response.RouteTables) != 1 {
-				glog.Fatalf("found multiple route tables for subnet: %s", subnetId)
-			}
-			glog.V(2).Info("found existing route table")
-			existing = response.RouteTables[0]
-			routeTableId = aws.StringValue(existing.RouteTableId)
-		}
+		rt := response.RouteTable
+		e.ID = rt.RouteTableId
 	}
 
-	output.CreateVar(r)
-	if routeTableId == "" {
-		glog.V(2).Info("Route table not found; will create")
-		output.AddEC2Command("create-route-table", "--vpc-id", output.ReadVar(r.Subnet.VPC), "--query", "RouteTable.RouteTableId").AssignTo(r)
-		output.AddEC2Command("associate-route-table", "--route-table-id", output.ReadVar(r), "--subnet-id", output.ReadVar(r.Subnet))
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
+	t.CreateVar(e)
+	if a == nil {
+		vpcID := StringValue(e.VPCID)
+		if vpcID == "" {
+			vpcID = t.ReadVar(e.VPC)
+		}
+
+		if vpcID == "" {
+			return MissingValueError("Must specify VPC for RouteTable create")
+		}
+
+		glog.V(2).Infof("Creating RouteTable with VPC: %q", vpcID)
+
+		t.AddEC2Command("create-route-table", "--vpc-id", vpcID, "--query", "RouteTable.RouteTableId").AssignTo(e)
 	} else {
-		output.AddAssignment(r, routeTableId)
+		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return output.AddAWSTags(cloud.Tags(), r, "route-table")
+	return nil
+	//return output.AddAWSTags(cloud.Tags(), r, "route-table")
 }

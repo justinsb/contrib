@@ -3,37 +3,95 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
 )
 
+type IAMInstanceProfileRenderer interface {
+	RenderIAMInstanceProfile(actual, expected, changes *IAMInstanceProfile) error
+}
+
 type IAMInstanceProfile struct {
-	Role *IAMRole
-	Name string
+	ID   *string
+	Name *string
 }
 
-func (r *IAMInstanceProfile) String() string {
-	return fmt.Sprintf("IAMInstanceProfile (name=%s)", r.Name)
+func (s *IAMInstanceProfile) Prefix() string {
+	return "IAMInstanceProfile"
 }
 
-func (r *IAMInstanceProfile) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	request := &iam.GetInstanceProfileInput{InstanceProfileName: aws.String(r.Name)}
+func (e *IAMInstanceProfile) find(c *Context) (*IAMInstanceProfile, error) {
+	cloud := c.Cloud
 
-	existing, err := cloud.IAM.GetInstanceProfile(request)
+	request := &iam.GetInstanceProfileInput{InstanceProfileName: e.Name}
+
+	response, err := cloud.IAM.GetInstanceProfile(request)
 	if err != nil {
-		return fmt.Errorf("error getting instance profile policy: %v", err)
+		return nil, fmt.Errorf("error getting IAMInstanceProfile: %v", err)
 	}
 
-	if existing == nil {
-		glog.V(2).Info("Instance profile not found; will create: ", r)
+	ip := response.InstanceProfile
+	actual := &IAMInstanceProfile{}
+	actual.ID = ip.InstanceProfileId
+	actual.Name = ip.InstanceProfileName
+	return actual, nil
+}
 
-		output.AddIAMCommand("create-instance-profile",
-			"--instance-profile-name", r.Name)
-		// TODO: Don't assume all-or-nothing creation
-		output.AddIAMCommand("add-role-to-instance-profile",
-			"--instance-profile-name", r.Name,
-			"--role-name", r.Role.Name)
+func (e *IAMInstanceProfile) Run(c *Context) error {
+	a, err := e.find(c)
+	if err != nil {
+		return err
+	}
+
+	changes := &IAMInstanceProfile{}
+	changed := BuildChanges(a, e, changes)
+	if !changed {
+		return nil
+	}
+
+	err = e.checkChanges(a, e, changes)
+	if err != nil {
+		return err
+	}
+
+	target := c.Target.(IAMInstanceProfileRenderer)
+	return target.RenderIAMInstanceProfile(a, e, changes)
+}
+
+func (s *IAMInstanceProfile) checkChanges(a, e, changes *IAMInstanceProfile) error {
+	if a != nil {
+		if e.Name == nil {
+			return MissingValueError("Name is required when creating IAMInstanceProfile")
+		}
+	}
+	return nil
+}
+
+func (t *AWSAPITarget) RenderIAMInstanceProfile(a, e, changes *IAMInstanceProfile) error {
+	if a == nil {
+		glog.V(2).Infof("Creating IAMInstanceProfile with Name:%q", *e.Name)
+
+		request := &iam.CreateInstanceProfileInput{}
+		request.InstanceProfileName = e.Name
+
+		response, err := t.cloud.IAM.CreateInstanceProfile(request)
+		if err != nil {
+			return fmt.Errorf("error creating IAMInstanceProfile: %v", err)
+		}
+
+		e.ID = response.InstanceProfile.InstanceProfileId
+	}
+
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderIAMInstanceProfile(a, e, changes *IAMInstanceProfile) error {
+	t.CreateVar(e)
+	if a == nil {
+		glog.V(2).Infof("Creating IAMInstanceProfile with Name:%q", *e.Name)
+
+		t.AddIAMCommand("create-instance-profile",
+			"--instance-profile-name", *e.Name)
 	}
 
 	return nil
