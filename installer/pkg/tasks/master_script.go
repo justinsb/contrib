@@ -12,15 +12,20 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/config"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type MasterScript struct {
+	fi.SimpleUnit
+
 	Config *config.Configuration
 }
 
 var _ DynamicResource = &MasterScript{}
 
 type MinionScript struct {
+	fi.SimpleUnit
+
 	Config *config.Configuration
 }
 

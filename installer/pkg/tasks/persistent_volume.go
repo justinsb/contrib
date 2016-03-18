@@ -10,6 +10,8 @@ import (
 )
 
 type PersistentVolume struct {
+	fi.SimpleUnit
+
 	ID               *string
 	AvailabilityZone *string
 	VolumeType       *string
@@ -120,7 +122,7 @@ func (t *AWSAPITarget) RenderPersistentVolume(a, e, changes *PersistentVolume) e
 	tags := t.cloud.Tags()
 	tags["Name"] = *e.Name
 
-	return t.AddAWSTags(tags, e, "volume")
+	return t.AddAWSTags(tags, *e.ID, "volume")
 }
 
 func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) error {

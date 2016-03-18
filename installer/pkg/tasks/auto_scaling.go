@@ -9,6 +9,8 @@ import (
 )
 
 type AutoscalingLaunchConfiguration struct {
+	fi.SimpleUnit
+
 	InstanceCommonConfig
 	Name *string
 }

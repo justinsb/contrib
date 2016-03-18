@@ -14,6 +14,8 @@ type SSHKeyRenderer interface {
 }
 
 type SSHKey struct {
+	fi.SimpleUnit
+
 	Name        *string
 	PublicKey   Resource
 

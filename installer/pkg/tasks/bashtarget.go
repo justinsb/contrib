@@ -12,17 +12,18 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
+	"reflect"
 )
 
 type BashTarget struct {
 	// TODO: Remove cloud
-	cloud    *fi.AWSCloud
-	commands []*BashCommand
+	cloud                *fi.AWSCloud
+	commands             []*BashCommand
 
 	ec2Args              []string
 	autoscalingArgs      []string
 	iamArgs              []string
-	vars                 map[HasId]*BashVar
+	vars                 map[string]*BashVar
 	prefixCounts         map[string]int
 	resourcePrefixCounts map[string]int
 }
@@ -32,7 +33,7 @@ func NewBashTarget(cloud *fi.AWSCloud) *BashTarget {
 	b.ec2Args = []string{"aws", "ec2"}
 	b.autoscalingArgs = []string{"aws", "autoscaling"}
 	b.iamArgs = []string{"aws", "iam"}
-	b.vars = make(map[HasId]*BashVar)
+	b.vars = make(map[string]*BashVar)
 	b.prefixCounts = make(map[string]int)
 	b.resourcePrefixCounts = make(map[string]int)
 	return b
@@ -43,19 +44,31 @@ type BashVar struct {
 	staticValue *string
 }
 
-func (t *BashTarget) CreateVar(v HasId) *BashVar {
-	bv, found := t.vars[v]
+func getVariablePrefix(v fi.Unit) string {
+	t := reflect.TypeOf(v)
+	name := t.Name()
+	name = strings.ToUpper(name)
+	return name
+}
+
+func getKey(v fi.Unit) string {
+	return v.Path()
+}
+
+func (t *BashTarget) CreateVar(v fi.Unit) *BashVar {
+	key := getKey(v)
+	bv, found := t.vars[key]
 	if found {
 		glog.Fatal("Attempt to create variable twice for ", v)
 	}
 	bv = &BashVar{}
-	prefix := strings.ToUpper(v.Prefix())
+	prefix := getVariablePrefix(v)
 	n := t.prefixCounts[prefix]
 	n++
 	t.prefixCounts[prefix] = n
 
 	bv.name = prefix + "_" + strconv.Itoa(n)
-	t.vars[v] = bv
+	t.vars[key] = bv
 	return bv
 }
 
@@ -65,8 +78,8 @@ type BashCommand struct {
 	assignTo *BashVar
 }
 
-func (c *BashCommand) AssignTo(s HasId) *BashCommand {
-	bv := c.parent.vars[s]
+func (c *BashCommand) AssignTo(s fi.Unit) *BashCommand {
+	bv := c.parent.vars[getKey(s)]
 	if bv == nil {
 		glog.Fatal("no variable assigned to ", s)
 	}
@@ -107,8 +120,8 @@ func (c *BashCommand) PrintShellCommand(w io.Writer) error {
 	return err
 }
 
-func (t *BashTarget) ReadVar(s HasId) string {
-	bv := t.vars[s]
+func (t *BashTarget) ReadVar(s fi.Unit) string {
+	bv := t.vars[getKey(s)]
 	if bv == nil {
 		glog.Fatal("no variable assigned to ", s)
 	}
@@ -202,7 +215,7 @@ func bashQuoteString(s string) string {
 	return "\"" + string(quoted.Bytes()) + "\""
 }
 
-func (t *BashTarget) AddAWSTags(expected map[string]string, s HasId, resourceType string) error {
+func (t *BashTarget) AddAWSTags(expected map[string]string, s fi.Unit, resourceType string) error {
 	resourceId, exists := t.FindValue(s)
 	var missing map[string]string
 	if exists {
@@ -238,10 +251,10 @@ func (t *BashTarget) AddCommand(cmd *BashCommand) *BashCommand {
 	return cmd
 }
 
-func (t *BashTarget) AddAssignment(h HasId, value string) {
-	bv := t.vars[h]
+func (t *BashTarget) AddAssignment(u fi.Unit, value string) {
+	bv := t.vars[getKey(u)]
 	if bv == nil {
-		glog.Fatal("no variable assigned to ", h)
+		glog.Fatal("no variable assigned to ", u)
 	}
 
 	cmd := &BashCommand{}
@@ -252,10 +265,10 @@ func (t *BashTarget) AddAssignment(h HasId, value string) {
 	bv.staticValue = &value
 }
 
-func (t *BashTarget) FindValue(h HasId) (string, bool) {
-	bv := t.vars[h]
+func (t *BashTarget) FindValue(u fi.Unit) (string, bool) {
+	bv := t.vars[getKey(u)]
 	if bv == nil {
-		glog.Fatal("no variable assigned to ", h)
+		glog.Fatal("no variable assigned to ", u)
 	}
 
 	if bv.staticValue == nil {

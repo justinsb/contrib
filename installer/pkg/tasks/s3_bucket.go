@@ -10,6 +10,8 @@ import (
 )
 
 type S3Bucket struct {
+	fi.SimpleUnit
+
 	Name   *string
 	Region *string
 

@@ -12,6 +12,8 @@ import (
 )
 
 type AutoscalingGroup struct {
+	fi.SimpleUnit
+
 	Name                *string
 	LaunchConfiguration *AutoscalingLaunchConfiguration
 	MinSize             *int64

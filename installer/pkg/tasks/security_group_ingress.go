@@ -14,6 +14,8 @@ type SecurityGroupIngressRenderer interface {
 }
 
 type SecurityGroupIngress struct {
+	fi.SimpleUnit
+
 	SecurityGroup *SecurityGroup
 	CIDR          *string
 	Protocol      *string

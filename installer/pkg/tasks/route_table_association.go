@@ -13,6 +13,8 @@ type RouteTableAssociationRenderer interface {
 }
 
 type RouteTableAssociation struct {
+	fi.SimpleUnit
+
 	ID           *string
 	RouteTable   *RouteTable
 	RouteTableID *string

@@ -12,13 +12,8 @@ type AWSAPITarget struct {
 	cloud *fi.AWSCloud
 }
 
-func (t *AWSAPITarget) AddAWSTags(expected map[string]string, resource HasId, resourceType string) error {
-	id := resource.GetID()
-	if id == nil {
-		return fmt.Errorf("cannot add tags: id not set: %v", resource)
-	}
-
-	actual, err := t.cloud.GetTags(*id, resourceType)
+func (t *AWSAPITarget) AddAWSTags(expected map[string]string, id string, resourceType string) error {
+	actual, err := t.cloud.GetTags(id, resourceType)
 	if err != nil {
 		return fmt.Errorf("unexpected error fetching tags for resource: %v", err)
 	}
@@ -34,7 +29,7 @@ func (t *AWSAPITarget) AddAWSTags(expected map[string]string, resource HasId, re
 
 	if len(missing) != 0 {
 		request := &ec2.CreateTagsInput{}
-		request.Resources = []*string{id}
+		request.Resources = []*string{&id}
 		for k, v := range missing {
 			request.Tags = append(request.Tags, &ec2.Tag{
 				Key:   aws.String(k),

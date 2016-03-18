@@ -14,6 +14,8 @@ type IAMRoleRenderer interface {
 }
 
 type IAMRole struct {
+	fi.SimpleUnit
+
 	ID                 *string
 	Name               *string
 	RolePolicyDocument Resource // "inline" policy

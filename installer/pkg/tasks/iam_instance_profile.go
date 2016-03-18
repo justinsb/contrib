@@ -13,6 +13,8 @@ type IAMInstanceProfileRenderer interface {
 }
 
 type IAMInstanceProfile struct {
+	fi.SimpleUnit
+
 	ID   *string
 	Name *string
 }

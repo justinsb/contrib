@@ -108,9 +108,3 @@ func RandomToken(length int) string {
 }
 
 var templateDir = "templates"
-
-type HasId interface {
-	Prefix() string
-	GetID() *string
-}
-

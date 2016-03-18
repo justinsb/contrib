@@ -13,6 +13,8 @@ type RouteTableRenderer interface {
 }
 
 type RouteTable struct {
+	fi.SimpleUnit
+
 	ID  *string
 	VPC *VPC
 }

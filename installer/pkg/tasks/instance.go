@@ -14,6 +14,8 @@ type InstanceRenderer interface {
 }
 
 type Instance struct {
+	fi.SimpleUnit
+
 	ID               *string
 	InstanceCommonConfig
 

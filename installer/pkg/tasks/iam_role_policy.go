@@ -14,6 +14,8 @@ type IAMRolePolicyRenderer interface {
 }
 
 type IAMRolePolicy struct {
+	fi.SimpleUnit
+
 	ID             *string
 	Name           *string
 	Role           *IAMRole

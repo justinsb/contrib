@@ -14,6 +14,8 @@ type RouteRenderer interface {
 }
 
 type Route struct {
+	fi.SimpleUnit
+
 	RouteTable      *RouteTable
 	InternetGateway *InternetGateway
 	CIDR            *string

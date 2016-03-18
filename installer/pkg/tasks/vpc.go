@@ -14,6 +14,8 @@ type VPCRenderer interface {
 }
 
 type VPC struct {
+	fi.SimpleUnit
+
 	ID                 *string
 	CIDR               *string
 	EnableDNSHostnames *bool
@@ -119,7 +121,7 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 
 		e.ID = response.Vpc.VpcId
 
-		err = t.AddAWSTags(t.cloud.Tags(), e, "vpc")
+		err = t.AddAWSTags(t.cloud.Tags(), *e.ID, "vpc")
 		if err != nil {
 			// TODO: Delete VPC?
 			return fmt.Errorf("error tagging VPC: %v", err)

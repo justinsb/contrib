@@ -13,6 +13,8 @@ type InternetGatewayRenderer interface {
 }
 
 type InternetGateway struct {
+	fi.SimpleUnit
+
 	ID    *string
 	VPC   *VPC
 	VPCID *string

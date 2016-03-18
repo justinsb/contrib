@@ -14,6 +14,8 @@ type IAMInstanceProfileRoleRenderer interface {
 }
 
 type IAMInstanceProfileRole struct {
+	fi.SimpleUnit
+
 	InstanceProfile *IAMInstanceProfile
 	Role            *IAMRole
 }

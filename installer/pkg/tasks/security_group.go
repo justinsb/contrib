@@ -13,6 +13,8 @@ type SecurityGroupRenderer interface {
 }
 
 type SecurityGroup struct {
+	fi.SimpleUnit
+
 	ID          *string
 	Name        *string
 	Description *string

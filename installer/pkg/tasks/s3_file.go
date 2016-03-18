@@ -16,6 +16,8 @@ import (
 )
 
 type S3File struct {
+	fi.SimpleUnit
+
 	Bucket    *S3Bucket
 	Key       *string
 	Source    Resource

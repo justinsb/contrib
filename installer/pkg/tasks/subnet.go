@@ -13,6 +13,8 @@ type SubnetRenderer interface {
 }
 
 type Subnet struct {
+	fi.SimpleUnit
+
 	ID               *string
 	VPC              *VPC
 	VPCID            *string
