@@ -41,5 +41,6 @@ var templateDir = "templates"
 
 type HasId interface {
 	Prefix() string
+	GetID() *string
 }
 

@@ -20,6 +20,10 @@ func (s *RouteTable) Prefix() string {
 	return "RouteTable"
 }
 
+func (s *RouteTable) GetID() *string {
+	return s.ID
+}
+
 func (e *RouteTable) find(c *Context) (*RouteTable, error) {
 	cloud := c.Cloud
 

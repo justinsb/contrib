@@ -19,6 +19,10 @@ type VPC struct {
 	EnableDNSSupport   *bool
 }
 
+func (s *VPC) GetID() *string {
+	return s.ID
+}
+
 func (e *VPC) find(c *Context) (*VPC, error) {
 	cloud := c.Cloud
 
@@ -112,13 +116,12 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 			return fmt.Errorf("error creating VPC: %v", err)
 		}
 
-		vpc := response.Vpc
-		id = *vpc.VpcId
+		e.ID = response.Vpc.VpcId
 
-		err = t.addAWSTags(t.cloud.Tags(), id, "vpc")
+		err = t.AddAWSTags(t.cloud.Tags(), e, "vpc")
 		if err != nil {
 			// TODO: Delete VPC?
-			return nil
+			return fmt.Errorf("error tagging VPC: %v", err)
 		}
 	}
 
@@ -144,7 +147,7 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 		}
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return nil
 }
 
 func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {

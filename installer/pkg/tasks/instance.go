@@ -27,6 +27,10 @@ func (s *Instance) Prefix() string {
 	return "Instance"
 }
 
+func (s *Instance) GetID() *string {
+	return s.ID
+}
+
 func (e *Instance) find(c *Context) (*Instance, error) {
 	cloud := c.Cloud
 

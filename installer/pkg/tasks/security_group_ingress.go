@@ -21,10 +21,6 @@ type SecurityGroupIngress struct {
 	SourceGroup   *SecurityGroup
 }
 
-func (s *SecurityGroupIngress) Prefix() string {
-	return "SecurityGroupIngress"
-}
-
 func (e *SecurityGroupIngress) find(c *Context) (*SecurityGroupIngress, error) {
 	cloud := c.Cloud
 

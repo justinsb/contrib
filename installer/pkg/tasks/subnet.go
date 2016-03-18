@@ -23,6 +23,10 @@ func (s *Subnet) Prefix() string {
 	return "Subnet"
 }
 
+func (s *Subnet) GetID() *string {
+	return s.ID
+}
+
 func (e *Subnet) find(c *Context) (*Subnet, error) {
 	cloud := c.Cloud
 

@@ -4,6 +4,8 @@ import (
 	"reflect"
 
 	"github.com/golang/glog"
+	"encoding/json"
+	"fmt"
 )
 
 func BuildChanges(a, e, changes interface{}) bool {
@@ -62,4 +64,12 @@ func StringValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+func BuildString(v interface{}) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("error marshalling: %v", err)
+	}
+	return string(data)
 }

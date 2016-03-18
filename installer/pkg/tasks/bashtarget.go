@@ -207,7 +207,7 @@ func (t *BashTarget) AddAWSTags(expected map[string]string, s HasId, resourceTyp
 	if exists {
 		actual, err := t.cloud.GetTags(resourceId, resourceType)
 		if err != nil {
-			return fmt.Errorf("unexpected error fetchin tags for resource: %v", err)
+			return fmt.Errorf("unexpected error fetching tags for resource: %v", err)
 		}
 
 		missing = map[string]string{}

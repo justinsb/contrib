@@ -5,7 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
-"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 type IAMRolePolicyRenderer interface {
@@ -21,6 +21,10 @@ type IAMRolePolicy struct {
 
 func (s *IAMRolePolicy) Prefix() string {
 	return "IAMRolePolicy"
+}
+
+func (s *IAMRolePolicy) GetID() *string {
+	return s.ID
 }
 
 func (e *IAMRolePolicy) find(c *Context) (*IAMRolePolicy, error) {

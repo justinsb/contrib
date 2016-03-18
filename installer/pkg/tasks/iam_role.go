@@ -22,6 +22,10 @@ func (s *IAMRole) Prefix() string {
 	return "IAMRole"
 }
 
+func (s *IAMRole) GetID() *string {
+	return s.ID
+}
+
 func (e *IAMRole) find(c *Context) (*IAMRole, error) {
 	cloud := c.Cloud
 

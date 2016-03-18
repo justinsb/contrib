@@ -24,6 +24,14 @@ func (s *PersistentVolume) Prefix() string {
 	return "PersistentVolume"
 }
 
+func (s *PersistentVolume) GetID() *string {
+	return s.ID
+}
+
+func (s *PersistentVolume) String() string {
+	return BuildString(s)
+}
+
 func (e *PersistentVolume) find(c *Context) (*PersistentVolume, error) {
 	cloud := c.Cloud
 
@@ -108,7 +116,10 @@ func (t *AWSAPITarget) RenderPersistentVolume(a, e, changes *PersistentVolume) e
 		e.ID = response.VolumeId
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	tags := t.cloud.Tags()
+	tags["Name"] = *e.Name
+
+	return t.AddAWSTags(tags, e, "volume")
 }
 
 func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) error {
@@ -125,11 +136,8 @@ func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) err
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	//tags := cloud.Tags()
-	//tags["Name"] = v.NameTag
-	//
-	//return t.AddAWSTags(tags, v, "volume")
+	tags := t.cloud.Tags()
+	tags["Name"] = *e.Name
 
-	return nil
-	//return output.AddAWSTags(cloud.Tags(), r, "route-table-association")
+	return t.AddAWSTags(tags, e, "volume")
 }

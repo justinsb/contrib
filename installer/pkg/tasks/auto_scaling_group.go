@@ -27,6 +27,10 @@ func (s *AutoscalingGroup) Prefix() string {
 	return "AutoscalingGroup"
 }
 
+func (s *AutoscalingGroup) GetID() *string {
+	return s.Name
+}
+
 func (e *AutoscalingGroup) find(c *Context) (*AutoscalingGroup, error) {
 	cloud := c.Cloud
 

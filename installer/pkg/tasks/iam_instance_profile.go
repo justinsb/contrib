@@ -20,6 +20,10 @@ func (s *IAMInstanceProfile) Prefix() string {
 	return "IAMInstanceProfile"
 }
 
+func (s *IAMInstanceProfile) GetID() *string {
+	return s.ID
+}
+
 func (e *IAMInstanceProfile) find(c *Context) (*IAMInstanceProfile, error) {
 	cloud := c.Cloud
 

@@ -23,6 +23,10 @@ func (s *SSHKey) Prefix() string {
 	return "SSHKey"
 }
 
+func (s *SSHKey) GetID() *string {
+	return s.Name
+}
+
 func (k *SSHKey) String() string {
 	return fmt.Sprintf("SSHKey (name=%s)", k.Name)
 }

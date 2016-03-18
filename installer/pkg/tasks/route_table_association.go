@@ -23,6 +23,10 @@ func (s *RouteTableAssociation) Prefix() string {
 	return "RouteTableAssociation"
 }
 
+func (s *RouteTableAssociation) GetID() *string {
+	return s.ID
+}
+
 func (e *RouteTableAssociation) find(c *Context) (*RouteTableAssociation, error) {
 	cloud := c.Cloud
 

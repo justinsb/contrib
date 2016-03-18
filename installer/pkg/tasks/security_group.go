@@ -22,6 +22,10 @@ func (s *SecurityGroup) Prefix() string {
 	return "SecurityGroup"
 }
 
+func (s *SecurityGroup) GetID() *string {
+	return s.ID
+}
+
 func (e *SecurityGroup) find(c *Context) (*SecurityGroup, error) {
 	cloud := c.Cloud
 

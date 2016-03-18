@@ -17,10 +17,6 @@ type IAMInstanceProfileRole struct {
 	Role            *IAMRole
 }
 
-func (s *IAMInstanceProfileRole) Prefix() string {
-	return "IAMInstanceProfileRole"
-}
-
 func (e *IAMInstanceProfileRole) find(c *Context) (*IAMInstanceProfileRole, error) {
 	cloud := c.Cloud
 
@@ -98,7 +94,6 @@ func (t *AWSAPITarget) RenderIAMInstanceProfileRole(a, e, changes *IAMInstancePr
 }
 
 func (t *BashTarget) RenderIAMInstanceProfileRole(a, e, changes *IAMInstanceProfileRole) error {
-	t.CreateVar(e)
 	if a == nil {
 		glog.V(2).Infof("Creating IAMInstanceProfileRole")
 

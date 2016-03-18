@@ -16,6 +16,10 @@ func (l *AutoscalingLaunchConfiguration) Prefix() string {
 	return "AutoscalingLaunchConfiguration"
 }
 
+func (l *AutoscalingLaunchConfiguration) GetID() *string {
+	return l.Name
+}
+
 func (l *AutoscalingLaunchConfiguration) String() string {
 	return fmt.Sprintf("LaunchConfiguration (name=%s)", l.Name)
 }

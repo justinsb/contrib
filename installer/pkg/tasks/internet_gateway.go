@@ -21,6 +21,10 @@ func (s *InternetGateway) Prefix() string {
 	return "InternetGateway"
 }
 
+func (s *InternetGateway) GetID() *string {
+	return s.ID
+}
+
 func (e *InternetGateway) find(c *Context) (*InternetGateway, error) {
 	vpcID := e.VPCID
 	if vpcID == nil && e.VPC != nil {
