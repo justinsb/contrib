@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type InstanceRenderer interface {
@@ -31,12 +32,12 @@ func (s *Instance) GetID() *string {
 	return s.ID
 }
 
-func (e *Instance) find(c *Context) (*Instance, error) {
-	cloud := c.Cloud
+func (e *Instance) find(c *fi.RunContext) (*Instance, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("tag:Name", *e.Name))
-	filters = append(filters, newEc2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
+	filters = append(filters, fi.NewEC2Filter("tag:Name", *e.Name))
+	filters = append(filters, fi.NewEC2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
 	request := &ec2.DescribeInstancesInput{
 		Filters: filters,
 	}
@@ -70,7 +71,7 @@ func (e *Instance) find(c *Context) (*Instance, error) {
 	return actual, nil
 }
 
-func (e *Instance) Run(c *Context) error {
+func (e *Instance) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

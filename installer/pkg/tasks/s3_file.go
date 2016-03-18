@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type S3File struct {
@@ -34,8 +35,8 @@ func (s *S3File) Prefix() string {
 	return "S3File"
 }
 
-func (e *S3File) find(c *Context) (*S3File, error) {
-	cloud := c.Cloud
+func (e *S3File) find(c *fi.RunContext) (*S3File, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	region, exists, err := e.Bucket.findRegionIfExists(c)
 	if err != nil {
@@ -96,7 +97,7 @@ func (e *S3File) find(c *Context) (*S3File, error) {
 	return actual, nil
 }
 
-func (e *S3File) Run(c *Context) error {
+func (e *S3File) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

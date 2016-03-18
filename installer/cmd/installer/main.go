@@ -11,6 +11,7 @@ import (
 	"k8s.io/contrib/installer/pkg/config"
 	"k8s.io/contrib/installer/pkg/tasks"
 	"strconv"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 var basePath string
@@ -37,12 +38,12 @@ func findBootstrap() tasks.Resource {
 	return &tasks.FileResource{Path: path}
 }
 
-func renderItems(context *tasks.Context, items ...tasks.Item) {
-	for _, resource := range items {
-		glog.Info("rendering ", resource)
-		err := resource.Run(context)
+func renderItems(context *fi.RunContext, units ...fi.Unit) {
+	for _, unit := range units {
+		glog.Info("rendering ", unit)
+		err := unit.Run(context)
 		if err != nil {
-			glog.Fatalf("error rendering resource (%v): %v", resource, err)
+			glog.Fatalf("error rendering resource (%v): %v", unit, err)
 		}
 	}
 }
@@ -69,6 +70,9 @@ func main() {
 	var minionCount int
 
 	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
+
+	var configPath string
+	flag.StringVar(&configPath, "config", configPath, "Path to config file")
 
 	flag.StringVar(&config.Zone, "az", "us-east-1b", "AWS availability zone")
 	flag.StringVar(&s3BucketName, "s3-bucket", "", "S3 bucket for upload of artifacts")
@@ -168,11 +172,25 @@ func main() {
 	}
 
 	tags := map[string]string{"KubernetesCluster": clusterID}
-	cloud := tasks.NewAWSCloud(region, tags)
+	cloud := fi.NewAWSCloud(region, tags)
 
 	target := tasks.NewBashTarget(cloud)
 
-	context := tasks.NewContext(target, cloud)
+	// TODO: Rationalize configs
+	fiConfig := fi.NewSimpleConfig()
+	if configPath != "" {
+		err := fiConfig.ReadYaml(configPath)
+		if err != nil {
+			glog.Fatalf("error reading configuration: %v", err)
+		}
+	}
+
+	fiContext, err := fi.NewContext(fiConfig, cloud)
+	if err != nil {
+		glog.Fatalf("error building config: %v", err)
+	}
+
+	context := fiContext.NewRunContext(target, fi.ModeConfigure)
 
 	/*
 	vpc := &tasks.VPC{CIDR: String("172.20.0.0/16")}
@@ -234,7 +252,7 @@ func main() {
 		Public: Bool(true),
 	}
 
-	s3Resources := []tasks.Item{
+	s3Resources := []fi.Unit{
 		s3Bucket,
 		s3KubernetesFile,
 		s3BootstrapFile,
@@ -256,7 +274,7 @@ func main() {
 	}
 
 	glog.Info("Processing master volume resource")
-	masterPVResources := []tasks.Item{
+	masterPVResources := []fi.Unit{
 		masterPV,
 	}
 	renderItems(context, masterPVResources...)
@@ -376,7 +394,7 @@ func main() {
 		},
 	}
 
-	resources := []tasks.Item{
+	resources := []fi.Unit{
 		iamMasterRole, iamMasterRolePolicy, iamMasterInstanceProfile, iamMasterInstanceProfileRole,
 		iamMinionRole, iamMinionRolePolicy, iamMinionInstanceProfile, iamMinionInstanceProfileRole,
 		sshKey, vpc, subnet, igw,

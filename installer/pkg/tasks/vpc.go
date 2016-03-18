@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type VPCRenderer interface {
@@ -23,8 +24,8 @@ func (s *VPC) GetID() *string {
 	return s.ID
 }
 
-func (e *VPC) find(c *Context) (*VPC, error) {
-	cloud := c.Cloud
+func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	actual := &VPC{}
 	request := &ec2.DescribeVpcsInput{
@@ -67,7 +68,7 @@ func (e *VPC) find(c *Context) (*VPC, error) {
 	return actual, nil
 }
 
-func (e *VPC) Run(c *Context) error {
+func (e *VPC) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

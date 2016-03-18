@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type RouteTableRenderer interface {
@@ -24,8 +25,8 @@ func (s *RouteTable) GetID() *string {
 	return s.ID
 }
 
-func (e *RouteTable) find(c *Context) (*RouteTable, error) {
-	cloud := c.Cloud
+func (e *RouteTable) find(c *fi.RunContext) (*RouteTable, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	actual := &RouteTable{}
 	request := &ec2.DescribeRouteTablesInput{
@@ -51,7 +52,7 @@ func (e *RouteTable) find(c *Context) (*RouteTable, error) {
 	return actual, nil
 }
 
-func (e *RouteTable) Run(c *Context) error {
+func (e *RouteTable) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

@@ -6,11 +6,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type S3Bucket struct {
-	Name     *string
-	Region   *string
+	Name   *string
+	Region *string
 
 	//rendered bool
 	//exists   bool
@@ -24,8 +25,8 @@ func (s *S3Bucket) Prefix() string {
 	return "S3Bucket"
 }
 
-func (e*S3Bucket) findRegionIfExists(c*Context) (string, bool, error) {
-	cloud := c.Cloud
+func (e*S3Bucket) findRegionIfExists(c *fi.RunContext) (string, bool, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	request := &s3.GetBucketLocationInput{
 		Bucket: e.Name,
@@ -55,7 +56,7 @@ func (e*S3Bucket) findRegionIfExists(c*Context) (string, bool, error) {
 	return region, true, nil
 }
 
-func (e *S3Bucket) find(c *Context) (*S3Bucket, error) {
+func (e *S3Bucket) find(c *fi.RunContext) (*S3Bucket, error) {
 	region, exists, err := e.findRegionIfExists(c)
 	if err != nil {
 		return nil, err
@@ -71,7 +72,7 @@ func (e *S3Bucket) find(c *Context) (*S3Bucket, error) {
 	return actual, nil
 }
 
-func (e *S3Bucket) Run(c *Context) error {
+func (e *S3Bucket) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

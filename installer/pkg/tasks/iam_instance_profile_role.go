@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type IAMInstanceProfileRoleRenderer interface {
@@ -17,8 +18,8 @@ type IAMInstanceProfileRole struct {
 	Role            *IAMRole
 }
 
-func (e *IAMInstanceProfileRole) find(c *Context) (*IAMInstanceProfileRole, error) {
-	cloud := c.Cloud
+func (e *IAMInstanceProfileRole) find(c *fi.RunContext) (*IAMInstanceProfileRole, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	if e.Role == nil || e.Role.ID == nil {
 		return nil, nil
@@ -45,7 +46,7 @@ func (e *IAMInstanceProfileRole) find(c *Context) (*IAMInstanceProfileRole, erro
 	return nil, nil
 }
 
-func (e *IAMInstanceProfileRole) Run(c *Context) error {
+func (e *IAMInstanceProfileRole) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type SecurityGroupIngressRenderer interface {
@@ -21,8 +22,8 @@ type SecurityGroupIngress struct {
 	SourceGroup   *SecurityGroup
 }
 
-func (e *SecurityGroupIngress) find(c *Context) (*SecurityGroupIngress, error) {
-	cloud := c.Cloud
+func (e *SecurityGroupIngress) find(c *fi.RunContext) (*SecurityGroupIngress, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	var sourceGroupID *string
 	canMatch := false
@@ -46,7 +47,7 @@ func (e *SecurityGroupIngress) find(c *Context) (*SecurityGroupIngress, error) {
 	if canMatch && sgID != nil {
 		request := &ec2.DescribeSecurityGroupsInput{
 			Filters: []*ec2.Filter{
-				newEc2Filter("group-id", *sgID),
+				fi.NewEC2Filter("group-id", *sgID),
 			},
 		}
 
@@ -121,7 +122,7 @@ func (e *SecurityGroupIngress) find(c *Context) (*SecurityGroupIngress, error) {
 	return nil, nil
 }
 
-func (e *SecurityGroupIngress) Run(c *Context) error {
+func (e *SecurityGroupIngress) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
@@ -216,8 +217,4 @@ func (t *BashTarget) RenderSecurityGroupIngress(a, e, changes *SecurityGroupIngr
 
 func (s *SecurityGroupIngress) String() string {
 	return fmt.Sprintf("SecurityGroupIngress (Port=%d-%d)", s.FromPort, s.ToPort)
-}
-
-func (s *SecurityGroupIngress) RenderBash(cloud *AWSCloud, output *BashTarget) error {
-	return nil
 }

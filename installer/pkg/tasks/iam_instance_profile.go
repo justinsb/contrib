@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type IAMInstanceProfileRenderer interface {
@@ -24,8 +25,8 @@ func (s *IAMInstanceProfile) GetID() *string {
 	return s.ID
 }
 
-func (e *IAMInstanceProfile) find(c *Context) (*IAMInstanceProfile, error) {
-	cloud := c.Cloud
+func (e *IAMInstanceProfile) find(c *fi.RunContext) (*IAMInstanceProfile, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	request := &iam.GetInstanceProfileInput{InstanceProfileName: e.Name}
 
@@ -41,7 +42,7 @@ func (e *IAMInstanceProfile) find(c *Context) (*IAMInstanceProfile, error) {
 	return actual, nil
 }
 
-func (e *IAMInstanceProfile) Run(c *Context) error {
+func (e *IAMInstanceProfile) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

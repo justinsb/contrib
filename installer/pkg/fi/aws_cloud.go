@@ -1,33 +1,58 @@
-package tasks
+package fi
 
 import (
-	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/golang/glog"
+	"fmt"
+"github.com/golang/glog"
 )
 
 type AWSCloud struct {
-	Region      string
+	Cloud
+
+	EC2         *ec2.EC2
+	//S3          *s3.S3
 	s3          map[string]*s3.S3
 	IAM         *iam.IAM
-	EC2         *ec2.EC2
 	Autoscaling *autoscaling.AutoScaling
+
+	Region      string
+
 	tags        map[string]string
+}
+
+var _ Cloud = &AWSCloud{}
+
+func (c *AWSCloud) IsAWS() bool {
+	return true
+}
+
+func (c *AWSCloud) IsGCE() bool {
+	return false
+}
+
+func (c *AWSCloud) IsVagrant() bool {
+	return false
+}
+
+func (c *AWSCloud) ProviderID() ProviderID {
+	return ProviderAWS
 }
 
 func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	c := &AWSCloud{Region: region}
+
 	config := aws.NewConfig().WithRegion(region)
 	c.EC2 = ec2.New(session.New(), config)
+	//c.S3 = s3.New(session.New(), config)
 	c.s3 = make(map[string]*s3.S3)
 	c.IAM = iam.New(session.New(), config)
 	c.Autoscaling = autoscaling.New(session.New(), config)
+
 	c.tags = tags
 	return c
 }
@@ -42,7 +67,7 @@ func (c*AWSCloud) GetS3(region string) *s3.S3 {
 	return client
 }
 
-func newEc2Filter(name string, values ...string) *ec2.Filter {
+func NewEC2Filter(name string, values ...string) *ec2.Filter {
 	awsValues := []*string{}
 	for _, value := range values {
 		awsValues = append(awsValues, aws.String(value))
@@ -68,8 +93,8 @@ func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]s
 
 	request := &ec2.DescribeTagsInput{
 		Filters: []*ec2.Filter{
-			newEc2Filter("resource-id", resourceId),
-			newEc2Filter("resource-type", resourceType),
+			NewEC2Filter("resource-id", resourceId),
+			NewEC2Filter("resource-type", resourceType),
 		},
 	}
 
@@ -114,7 +139,7 @@ func (c *AWSCloud) CreateTags(resourceId string, resourceType string, tags map[s
 func (c *AWSCloud) BuildFilters() []*ec2.Filter {
 	filters := []*ec2.Filter{}
 	for name, value := range c.tags {
-		filter := newEc2Filter("tag:" + name, value)
+		filter := NewEC2Filter("tag:" + name, value)
 		filters = append(filters, filter)
 	}
 	return filters

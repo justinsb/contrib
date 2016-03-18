@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/glog"
 	"github.com/aws/aws-sdk-go/aws"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type IAMRolePolicyRenderer interface {
@@ -27,8 +28,8 @@ func (s *IAMRolePolicy) GetID() *string {
 	return s.ID
 }
 
-func (e *IAMRolePolicy) find(c *Context) (*IAMRolePolicy, error) {
-	cloud := c.Cloud
+func (e *IAMRolePolicy) find(c *fi.RunContext) (*IAMRolePolicy, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	request := &iam.GetRolePolicyInput{
 		RoleName:   e.Role.Name,
@@ -50,7 +51,7 @@ func (e *IAMRolePolicy) find(c *Context) (*IAMRolePolicy, error) {
 	return actual, nil
 }
 
-func (e *IAMRolePolicy) Run(c *Context) error {
+func (e *IAMRolePolicy) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

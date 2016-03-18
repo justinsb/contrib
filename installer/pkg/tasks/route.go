@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type RouteRenderer interface {
@@ -22,8 +23,8 @@ func (r *Route) Prefix() string {
 	return "Route"
 }
 
-func (e *Route) find(c *Context) (*Route, error) {
-	cloud := c.Cloud
+func (e *Route) find(c *fi.RunContext) (*Route, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	var routeTableID *string
 	if e.RouteTable != nil {
@@ -69,7 +70,7 @@ func (e *Route) find(c *Context) (*Route, error) {
 	return nil, nil
 }
 
-func (e *Route) Run(c *Context) error {
+func (e *Route) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

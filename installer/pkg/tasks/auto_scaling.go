@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type AutoscalingLaunchConfiguration struct {
@@ -28,8 +29,8 @@ type AutoscalingLaunchConfigurationRenderer interface {
 	RenderAutoscalingLaunchConfiguration(actual, expected, changes *AutoscalingLaunchConfiguration) error
 }
 
-func (e *AutoscalingLaunchConfiguration) find(c *Context) (*AutoscalingLaunchConfiguration, error) {
-	cloud := c.Cloud
+func (e *AutoscalingLaunchConfiguration) find(c *fi.RunContext) (*AutoscalingLaunchConfiguration, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	request := &autoscaling.DescribeLaunchConfigurationsInput{
 		LaunchConfigurationNames: []*string{e.Name},
@@ -73,7 +74,7 @@ func (e *AutoscalingLaunchConfiguration) find(c *Context) (*AutoscalingLaunchCon
 	return actual, nil
 }
 
-func (e *AutoscalingLaunchConfiguration) Run(c *Context) error {
+func (e *AutoscalingLaunchConfiguration) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

@@ -12,6 +12,8 @@ const (
 type RunContext struct {
 	*Context
 
+	Target Target
+
 	parent *RunContext
 	node   *node
 	mode   RunMode

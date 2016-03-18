@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type SecurityGroupRenderer interface {
@@ -26,8 +27,8 @@ func (s *SecurityGroup) GetID() *string {
 	return s.ID
 }
 
-func (e *SecurityGroup) find(c *Context) (*SecurityGroup, error) {
-	cloud := c.Cloud
+func (e *SecurityGroup) find(c *fi.RunContext) (*SecurityGroup, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	var vpcID *string
 	if e.VPC != nil {
@@ -39,8 +40,8 @@ func (e *SecurityGroup) find(c *Context) (*SecurityGroup, error) {
 	}
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("vpc-id", *vpcID))
-	filters = append(filters, newEc2Filter("group-name", *e.Name))
+	filters = append(filters, fi.NewEC2Filter("vpc-id", *vpcID))
+	filters = append(filters, fi.NewEC2Filter("group-name", *e.Name))
 
 	request := &ec2.DescribeSecurityGroupsInput{
 		Filters: filters,
@@ -66,7 +67,7 @@ func (e *SecurityGroup) find(c *Context) (*SecurityGroup, error) {
 	return nil, nil
 }
 
-func (e *SecurityGroup) Run(c *Context) error {
+func (e *SecurityGroup) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

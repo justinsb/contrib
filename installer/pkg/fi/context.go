@@ -9,19 +9,32 @@ import (
 )
 
 type Context struct {
-	roles []string
-	state map[string]interface{}
+	roles     []string
+	state     map[string]interface{}
 
 	os        *OS
 	cloud     Cloud
 	config    Config
 	resources *ResourcesList
 
-	root *node
+	root      *node
 }
 
-func NewContext(config Config) (*Context, error) {
-	cloud := NewAWSCloud()
+//type Context struct {
+//	Cloud  *AWSCloud
+//	Target Target
+//}
+//
+//func NewContext(target Target, cloud *AWSCloud) *Context {
+//	c := &Context{
+//		Target: target,
+//		Cloud:  cloud,
+//	}
+//	return c
+//}
+
+
+func NewContext(config Config, cloud Cloud) (*Context, error) {
 	c := &Context{
 		state:     make(map[string]interface{}),
 		os:        &OS{},
@@ -40,9 +53,10 @@ func NewContext(config Config) (*Context, error) {
 	return c, nil
 }
 
-func (c *Context) NewRunContext(runMode RunMode) *RunContext {
+func (c *Context) NewRunContext(target Target, runMode RunMode) *RunContext {
 	rc := &RunContext{
 		Context: c,
+		Target: target,
 		node:    c.root,
 		mode:    runMode,
 	}

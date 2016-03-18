@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type SubnetRenderer interface {
@@ -27,8 +28,8 @@ func (s *Subnet) GetID() *string {
 	return s.ID
 }
 
-func (e *Subnet) find(c *Context) (*Subnet, error) {
-	cloud := c.Cloud
+func (e *Subnet) find(c *fi.RunContext) (*Subnet, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	actual := &Subnet{}
 	request := &ec2.DescribeSubnetsInput{
@@ -55,7 +56,7 @@ func (e *Subnet) find(c *Context) (*Subnet, error) {
 	return actual, nil
 }
 
-func (e *Subnet) Run(c *Context) error {
+func (e *Subnet) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

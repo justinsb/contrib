@@ -8,6 +8,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/aws/aws-sdk-go/aws"
 	"strings"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type AutoscalingGroup struct {
@@ -31,8 +32,8 @@ func (s *AutoscalingGroup) GetID() *string {
 	return s.Name
 }
 
-func (e *AutoscalingGroup) find(c *Context) (*AutoscalingGroup, error) {
-	cloud := c.Cloud
+func (e *AutoscalingGroup) find(c *fi.RunContext) (*AutoscalingGroup, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	request := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{e.Name},
@@ -79,7 +80,7 @@ func (e *AutoscalingGroup) find(c *Context) (*AutoscalingGroup, error) {
 	return actual, nil
 }
 
-func (e *AutoscalingGroup) Run(c *Context) error {
+func (e *AutoscalingGroup) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

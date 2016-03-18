@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type InternetGatewayRenderer interface {
@@ -25,7 +26,7 @@ func (s *InternetGateway) GetID() *string {
 	return s.ID
 }
 
-func (e *InternetGateway) find(c *Context) (*InternetGateway, error) {
+func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
 	vpcID := e.VPCID
 	if vpcID == nil && e.VPC != nil {
 		vpcID = e.VPC.ID
@@ -35,12 +36,12 @@ func (e *InternetGateway) find(c *Context) (*InternetGateway, error) {
 		return nil, nil
 	}
 
-	cloud := c.Cloud
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	actual := &InternetGateway{}
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("attachment.vpc-id", *vpcID))
+	filters = append(filters, fi.NewEC2Filter("attachment.vpc-id", *vpcID))
 	request := &ec2.DescribeInternetGatewaysInput{
 		Filters: filters,
 	}
@@ -64,7 +65,7 @@ func (e *InternetGateway) find(c *Context) (*InternetGateway, error) {
 	return actual, nil
 }
 
-func (e *InternetGateway) Run(c *Context) error {
+func (e *InternetGateway) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

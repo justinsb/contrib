@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type SSHKeyRenderer interface {
@@ -31,8 +32,8 @@ func (k *SSHKey) String() string {
 	return fmt.Sprintf("SSHKey (name=%s)", k.Name)
 }
 
-func (e *SSHKey) find(c *Context) (*SSHKey, error) {
-	cloud := c.Cloud
+func (e *SSHKey) find(c *fi.RunContext) (*SSHKey, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	request := &ec2.DescribeKeyPairsInput{
 		KeyNames: []*string{e.Name},
@@ -65,7 +66,7 @@ func (e *SSHKey) find(c *Context) (*SSHKey, error) {
 	return actual, nil
 }
 
-func (e *SSHKey) Run(c *Context) error {
+func (e *SSHKey) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

@@ -11,11 +11,12 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type BashTarget struct {
 	// TODO: Remove cloud
-	cloud    *AWSCloud
+	cloud    *fi.AWSCloud
 	commands []*BashCommand
 
 	ec2Args              []string
@@ -26,7 +27,7 @@ type BashTarget struct {
 	resourcePrefixCounts map[string]int
 }
 
-func NewBashTarget(cloud *AWSCloud) *BashTarget {
+func NewBashTarget(cloud *fi.AWSCloud) *BashTarget {
 	b := &BashTarget{cloud: cloud}
 	b.ec2Args = []string{"aws", "ec2"}
 	b.autoscalingArgs = []string{"aws", "autoscaling"}

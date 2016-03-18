@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type RouteTableAssociationRenderer interface {
@@ -27,8 +28,8 @@ func (s *RouteTableAssociation) GetID() *string {
 	return s.ID
 }
 
-func (e *RouteTableAssociation) find(c *Context) (*RouteTableAssociation, error) {
-	cloud := c.Cloud
+func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	routeTableID := e.RouteTableID
 	if routeTableID == nil && e.RouteTable != nil {
@@ -45,7 +46,7 @@ func (e *RouteTableAssociation) find(c *Context) (*RouteTableAssociation, error)
 	}
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("association.subnet-id", *subnetID))
+	filters = append(filters, fi.NewEC2Filter("association.subnet-id", *subnetID))
 	request := &ec2.DescribeRouteTablesInput{
 		RouteTableIds: []*string{routeTableID},
 		Filters:       filters,
@@ -75,7 +76,7 @@ func (e *RouteTableAssociation) find(c *Context) (*RouteTableAssociation, error)
 	return nil, nil
 }
 
-func (e *RouteTableAssociation) Run(c *Context) error {
+func (e *RouteTableAssociation) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

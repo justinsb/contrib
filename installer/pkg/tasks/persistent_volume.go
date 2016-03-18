@@ -6,6 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type PersistentVolume struct {
@@ -32,11 +33,11 @@ func (s *PersistentVolume) String() string {
 	return BuildString(s)
 }
 
-func (e *PersistentVolume) find(c *Context) (*PersistentVolume, error) {
-	cloud := c.Cloud
+func (e *PersistentVolume) find(c *fi.RunContext) (*PersistentVolume, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
 
 	filters := cloud.BuildFilters()
-	filters = append(filters, newEc2Filter("tag:Name", *e.Name))
+	filters = append(filters, fi.NewEC2Filter("tag:Name", *e.Name))
 	request := &ec2.DescribeVolumesInput{
 		Filters: filters,
 	}
@@ -64,7 +65,7 @@ func (e *PersistentVolume) find(c *Context) (*PersistentVolume, error) {
 	return actual, nil
 }
 
-func (e *PersistentVolume) Run(c *Context) error {
+func (e *PersistentVolume) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err

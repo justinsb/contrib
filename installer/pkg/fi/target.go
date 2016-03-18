@@ -1,4 +1,4 @@
-package tasks
+package fi
 
 type Target interface {
 }
