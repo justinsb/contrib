@@ -54,6 +54,7 @@ func (e *S3File) find(c *Context) (*S3File, error) {
 	if err != nil {
 		if requestFailure, ok := err.(awserr.RequestFailure); ok {
 			if requestFailure.StatusCode() == 404 {
+				glog.V(2).Infof("S3 file does not exist: s3://%s/%s", *e.Bucket.Name, e.Key)
 				return nil, nil
 			}
 		}
@@ -62,7 +63,33 @@ func (e *S3File) find(c *Context) (*S3File, error) {
 		return nil, fmt.Errorf("error getting S3 file metadata: %v", err)
 	}
 
+	aclRequest := &s3.GetObjectAclInput{
+		Bucket: e.Bucket.Name,
+		Key: e.Key,
+	}
+	aclResponse, err := cloud.GetS3(region).GetObjectAcl(aclRequest)
+	if err != nil {
+		return nil, fmt.Errorf("error getting S3 file ACL: %v", err)
+	}
+
+	isPublic := false
+	for _, grant := range aclResponse.Grants {
+		if grant.Grantee == nil {
+			continue
+		}
+		grantee := aws.StringValue(grant.Grantee.URI)
+		permission := aws.StringValue(grant.Permission)
+		glog.Infof("permission:%q grant:%q", permission, grantee)
+		if permission != "READ" {
+			continue
+		}
+		if grantee == "http://acs.amazonaws.com/groups/global/AllUsers" {
+			isPublic = true
+		}
+	}
+
 	actual := &S3File{}
+	actual.Public = &isPublic
 	actual.Bucket = e.Bucket
 	actual.Key = e.Key
 	actual.etag = response.ETag
@@ -145,7 +172,7 @@ func (t *BashTarget) RenderS3File(a, e, changes *S3File) error {
 			return fmt.Errorf("error while hashing local file: %v", err)
 		}
 		localHash := hex.EncodeToString(hasher.Sum(nil))
-		s3Hash := aws.StringValue(e.etag)
+		s3Hash := aws.StringValue(a.etag)
 		s3Hash = strings.Replace(s3Hash, "\"", "", -1)
 		if localHash == s3Hash {
 			glog.V(2).Info("s3 files match; skipping upload")

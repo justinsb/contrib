@@ -118,9 +118,8 @@ func (m *MinionScript) WriteTo(w io.Writer) error {
 	s.SetVar("DOCKER_STORAGE", m.Config.DockerStorage)
 
 	replacements := make(map[string]string)
-	s.CopyTemplate("common.sh", replacements)
+	s.CopyTemplate("configure-vm-aws.sh", replacements)
 	s.CopyTemplate("format-disks.sh", replacements)
-	s.CopyTemplate("salt-minion.sh", replacements)
 
 	return s.WriteTo(w)
 }
@@ -191,7 +190,7 @@ func (m *MasterScript) WriteTo(w io.Writer) error {
 
 	s.SetVar("MASTER_EXTRA_SANS", strings.Join(m.Config.MasterExtraSans, ","))
 
-	s.CopyTemplate("common.sh", replacements)
+	s.CopyTemplate("configure-vm-aws.sh", replacements)
 
 	s.WriteString("mkdir -p /etc/kubernetes\n")
 	s.WriteString("download-or-bust \"" + m.Config.BootstrapURL + "\"\n")
@@ -200,10 +199,6 @@ func (m *MasterScript) WriteTo(w io.Writer) error {
 	s.WriteString("./kubernetes-bootstrap -v=2\n")
 
 	s.CopyTemplate("format-disks.sh", replacements)
-	s.CopyTemplate("setup-master-pd.sh", replacements)
-	s.CopyTemplate("create-dynamic-salt-files.sh", replacements)
-	s.CopyTemplate("download-release.sh", replacements)
-	s.CopyTemplate("salt-master.sh", replacements)
 
 	return s.WriteTo(w)
 }

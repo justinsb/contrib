@@ -22,6 +22,7 @@ func BuildChanges(a, e, changes interface{}) bool {
 
 	va := reflect.ValueOf(a)
 	aIsNil := false
+
 	if va.IsNil() {
 		aIsNil = true
 	}
@@ -35,7 +36,7 @@ func BuildChanges(a, e, changes interface{}) bool {
 
 	for i := 0; i < ve.NumField(); i++ {
 		fve := ve.Field(i)
-		if fve.IsNil() {
+		if fve.Kind() == reflect.Ptr && fve.IsNil() {
 			// No expected value means 'don't change'
 			continue
 		}

@@ -41,7 +41,17 @@ func (e*S3Bucket) findRegionIfExists(c*Context) (string, bool, error) {
 		return "", false, fmt.Errorf("error getting bucket location: %v", err)
 	}
 
-	region := *response.LocationConstraint
+	var region string
+	if response.LocationConstraint == nil {
+		// US Classic does not return a region
+		region = "us-east-1"
+	} else {
+		region = *response.LocationConstraint
+		// Another special case: "EU" can mean eu-west-1
+		if region == "EU" {
+			region = "eu-west-1"
+		}
+	}
 	return region, true, nil
 }
 
