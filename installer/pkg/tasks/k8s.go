@@ -531,6 +531,8 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	route := &Route{RouteTable: routeTable, CIDR: String("0.0.0.0/0"), InternetGateway: igw}
 	c.Add(route)
 
+	c.Add(&RouteTableAssociation{RouteTable: routeTable, Subnet: subnet})
+	
 	masterSG := &SecurityGroup{
 		Name:        String("kubernetes-master-" + clusterID),
 		Description: String("Security group for master nodes"),
