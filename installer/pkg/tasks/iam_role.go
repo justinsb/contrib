@@ -53,6 +53,10 @@ func (e *IAMRole) Run(c *fi.RunContext) error {
 		return err
 	}
 
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
+	}
+
 	changes := &IAMRole{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {
@@ -114,6 +118,8 @@ func (t *BashTarget) RenderIAMRole(a, e, changes *IAMRole) error {
 		t.AddIAMCommand("create-role",
 			"--role-name", *e.Name,
 			"--assume-role-policy-document", rolePolicyDocument)
+	} else {
+		t.AddAssignment(e, *e.ID)
 	}
 
 	return nil

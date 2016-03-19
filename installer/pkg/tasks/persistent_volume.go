@@ -34,8 +34,7 @@ func (s *PersistentVolume) String() string {
 func (e *PersistentVolume) find(c *fi.RunContext) (*PersistentVolume, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	filters := cloud.BuildFilters()
-	filters = append(filters, fi.NewEC2Filter("tag:Name", *e.Name))
+	filters := cloud.BuildFilters(e.Name)
 	request := &ec2.DescribeVolumesInput{
 		Filters: filters,
 	}
@@ -115,10 +114,7 @@ func (t *AWSAPITarget) RenderPersistentVolume(a, e, changes *PersistentVolume) e
 		e.ID = response.VolumeId
 	}
 
-	tags := t.cloud.Tags()
-	tags["Name"] = *e.Name
-
-	return t.AddAWSTags(tags, *e.ID, "volume")
+	return t.AddAWSTags(*e.ID, "volume", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) error {
@@ -135,8 +131,5 @@ func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) err
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	tags := t.cloud.Tags()
-	tags["Name"] = *e.Name
-
-	return t.AddAWSTags(tags, e, "volume")
+	return t.AddAWSTags(e, "volume", t.cloud.BuildTags(e.Name))
 }

@@ -39,10 +39,8 @@ func (e *Route) find(c *fi.RunContext) (*Route, error) {
 		return nil, nil
 	}
 
-	filters := cloud.BuildFilters()
 	request := &ec2.DescribeRouteTablesInput{
 		RouteTableIds: []*string{routeTableID},
-		Filters:       filters,
 	}
 
 	response, err := cloud.EC2.DescribeRouteTables(request)
@@ -145,7 +143,7 @@ func (t *AWSAPITarget) RenderRoute(a, e, changes *Route) error {
 		}
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return nil
 }
 
 func (t *BashTarget) RenderRoute(a, e, changes *Route) error {
@@ -165,5 +163,4 @@ func (t *BashTarget) RenderRoute(a, e, changes *Route) error {
 	}
 
 	return nil
-	//return output.AddAWSTags(cloud.Tags(), r, "route-table-association")
 }

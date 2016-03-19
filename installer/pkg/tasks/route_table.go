@@ -15,12 +15,13 @@ type RouteTableRenderer interface {
 type RouteTable struct {
 	fi.SimpleUnit
 
-	ID  *string
-	VPC *VPC
+	Name *string
+	ID   *string
+	VPC  *VPC
 }
 
 func (s *RouteTable) Key() string {
-	return s.VPC.Key() + "-routetable"
+	return *s.Name
 }
 
 func (s *RouteTable) GetID() *string {
@@ -32,7 +33,7 @@ func (e *RouteTable) find(c *fi.RunContext) (*RouteTable, error) {
 
 	actual := &RouteTable{}
 	request := &ec2.DescribeRouteTablesInput{
-		Filters: cloud.BuildFilters(),
+		Filters: cloud.BuildFilters(e.Name),
 	}
 
 	response, err := cloud.EC2.DescribeRouteTables(request)
@@ -58,6 +59,10 @@ func (e *RouteTable) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
+	}
+
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
 	}
 
 	changes := &RouteTable{}
@@ -105,7 +110,7 @@ func (t *AWSAPITarget) RenderRouteTable(a, e, changes *RouteTable) error {
 		e.ID = rt.RouteTableId
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return t.AddAWSTags(*e.ID, "route-table", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
@@ -120,6 +125,5 @@ func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return nil
-	//return output.AddAWSTags(cloud.Tags(), r, "route-table")
+	return t.AddAWSTags(e, "route-table", t.cloud.BuildTags(e.Name))
 }

@@ -129,10 +129,35 @@ func (c *AWSCloud) CreateTags(resourceId string, resourceType string, tags map[s
 	return nil
 }
 
-func (c *AWSCloud) BuildFilters() []*ec2.Filter {
+
+func (c *AWSCloud) BuildTags(name *string) map[string]string {
+	tags := make(map[string]string)
+	if name != nil {
+		tags["Name"] = *name
+	} else {
+		glog.Warningf("Name not set when filtering by name")
+	}
+	for k, v := range c.tags {
+		tags[k] = v
+	}
+	return tags
+}
+
+func (c *AWSCloud) BuildFilters(name *string) []*ec2.Filter {
 	filters := []*ec2.Filter{}
-	for name, value := range c.tags {
-		filter := NewEC2Filter("tag:" + name, value)
+
+	merged := make(map[string]string)
+	if name != nil {
+		merged["Name"] = *name
+	} else {
+		glog.Warningf("Name not set when filtering by name")
+	}
+	for k, v := range c.tags {
+		merged[k] = v
+	}
+
+	for k, v := range merged {
+		filter := NewEC2Filter("tag:" + k, v)
 		filters = append(filters, filter)
 	}
 	return filters

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"encoding/base64"
 	"bytes"
+	"k8s.io/contrib/installer/pkg/fi"
 )
 
 func BuildChanges(a, e, changes interface{}) bool {
@@ -49,17 +50,42 @@ func BuildChanges(a, e, changes interface{}) bool {
 		if !aIsNil {
 			fva := va.Field(i)
 
-			if reflect.DeepEqual(fva.Interface(), fve.Interface()) {
+			if equalFieldValues(fva, fve) {
 				continue
 			}
 
-			glog.V(8).Infof("Field changed %q %q %q", t.Field(i).Name, fva.Interface(), fve.Interface())
+			glog.V(8).Infof("Field changed %q actual=%q expected=%q", t.Field(i).Name, DebugPrint(fva.Interface()), DebugPrint(fve.Interface()))
 		}
 		changed = true
 		vc.Field(i).Set(fve)
 	}
 
 	return changed
+}
+
+func equalFieldValues(a, e reflect.Value) bool {
+	//if a.Kind() == reflect.Ptr && !a.IsNil() && !e.IsNil() {
+	//	a = a.Elem()
+	//	e = e.Elem()
+	//}
+
+	if a.Kind() == reflect.Ptr &&  !a.IsNil() {
+		aHasID, ok := a.Interface().(fi.HasID)
+		if ok && e.Kind() == reflect.Ptr &&  !e.IsNil() {
+			eHasID, ok := e.Interface().(fi.HasID)
+			if ok {
+				aID := aHasID.GetID()
+				eID := eHasID.GetID()
+				if aID != nil && eID != nil && *aID == *eID {
+					return true
+				}
+			}
+		}
+	}
+	if reflect.DeepEqual(a.Interface(), e.Interface()) {
+		return true
+	}
+	return false
 }
 
 func StringValue(s *string) string {
@@ -106,7 +132,6 @@ func RandomToken(length int) string {
 	}
 }
 
-
 func String(s string) *string {
 	return &s
 }
@@ -117,6 +142,28 @@ func Bool(v bool) *bool {
 
 func Int64(v int64) *int64 {
 	return &v
+}
+
+func DebugPrint(o interface{}) string {
+	if o == nil {
+		return "<nil>"
+	}
+	v := reflect.ValueOf(o)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return "<nil>"
+		}
+		v = v.Elem()
+	}
+	if !v.IsValid() {
+		return "<?>"
+	}
+	o = v.Interface()
+	stringer, ok := o.(fmt.Stringer)
+	if ok {
+		return stringer.String()
+	}
+	return fmt.Sprint(o)
 }
 
 

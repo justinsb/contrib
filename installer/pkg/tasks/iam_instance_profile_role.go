@@ -28,6 +28,7 @@ func (e *IAMInstanceProfileRole) find(c *fi.RunContext) (*IAMInstanceProfileRole
 	cloud := c.Cloud().(*fi.AWSCloud)
 
 	if e.Role == nil || e.Role.ID == nil {
+		glog.V(2).Infof("Role/RoleID not set")
 		return nil, nil
 	}
 	roleID := *e.Role.ID

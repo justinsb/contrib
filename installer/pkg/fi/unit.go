@@ -9,6 +9,10 @@ type HasKey interface {
 	Key() string
 }
 
+type HasID interface {
+	GetID() *string
+}
+
 type KeyedUnit interface {
 	Unit
 	HasKey

@@ -15,6 +15,7 @@ type SubnetRenderer interface {
 type Subnet struct {
 	fi.SimpleUnit
 
+	Name             *string
 	ID               *string
 	VPC              *VPC
 	AvailabilityZone *string
@@ -22,7 +23,7 @@ type Subnet struct {
 }
 
 func (s *Subnet) Key() string {
-	return s.VPC.Key() + "-" + *s.CIDR
+	return *s.Name
 }
 
 func (s *Subnet) GetID() *string {
@@ -34,7 +35,7 @@ func (e *Subnet) find(c *fi.RunContext) (*Subnet, error) {
 
 	actual := &Subnet{}
 	request := &ec2.DescribeSubnetsInput{
-		Filters: cloud.BuildFilters(),
+		Filters: cloud.BuildFilters(e.Name),
 	}
 
 	response, err := cloud.EC2.DescribeSubnets(request)
@@ -51,6 +52,7 @@ func (e *Subnet) find(c *fi.RunContext) (*Subnet, error) {
 		actual.ID = subnet.SubnetId
 		actual.AvailabilityZone = subnet.AvailabilityZone
 		actual.VPC = &VPC{ID: subnet.VpcId}
+		actual.CIDR = subnet.CidrBlock
 		glog.V(2).Infof("found matching subnet %q", *actual.ID)
 	}
 
@@ -61,6 +63,10 @@ func (e *Subnet) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
+	}
+
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
 	}
 
 	changes := &Subnet{}
@@ -80,7 +86,7 @@ func (e *Subnet) Run(c *fi.RunContext) error {
 
 func (s *Subnet) checkChanges(a, e, changes *Subnet) error {
 	if a != nil {
-		if changes.VPC.ID != nil {
+		if changes.VPC != nil {
 			// TODO: Do we want to destroy & recreate the CIDR?
 			return InvalidChangeError("Cannot change subnet VPC", changes.VPC.ID, e.VPC.ID)
 		}
@@ -124,7 +130,7 @@ func (t *AWSAPITarget) RenderSubnet(a, e, changes *Subnet) error {
 		e.ID = subnet.SubnetId
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return t.AddAWSTags(*e.ID, "subnet", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
@@ -147,6 +153,5 @@ func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return nil
-	//return t.AddAWSTags(t.cloud.Tags(), e, "vpc")
+	return t.AddAWSTags(e, "subnet", t.cloud.BuildTags(e.Name))
 }

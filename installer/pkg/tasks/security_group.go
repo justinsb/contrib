@@ -41,7 +41,7 @@ func (e *SecurityGroup) find(c *fi.RunContext) (*SecurityGroup, error) {
 		return nil, nil
 	}
 
-	filters := cloud.BuildFilters()
+	filters := cloud.BuildFilters(nil) // TODO: Do we need any filters here - done by group-name
 	filters = append(filters, fi.NewEC2Filter("vpc-id", *vpcID))
 	filters = append(filters, fi.NewEC2Filter("group-name", *e.Name))
 
@@ -62,6 +62,9 @@ func (e *SecurityGroup) find(c *fi.RunContext) (*SecurityGroup, error) {
 		sg := response.SecurityGroups[0]
 		actual := &SecurityGroup{}
 		actual.ID = sg.GroupId
+		actual.Name = sg.GroupName
+		actual.Description = sg.Description
+		actual.VPC = &VPC{ID:sg.VpcId}
 		glog.V(2).Infof("found matching SecurityGroup %q", *actual.ID)
 		return actual, nil
 	}
@@ -73,6 +76,10 @@ func (e *SecurityGroup) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
+	}
+
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
 	}
 
 	changes := &SecurityGroup{}
@@ -124,7 +131,7 @@ func (t *AWSAPITarget) RenderSecurityGroup(a, e, changes *SecurityGroup) error {
 		e.ID = response.GroupId
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return t.AddAWSTags(*e.ID, "security-group", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderSecurityGroup(a, e, changes *SecurityGroup) error {
@@ -140,8 +147,7 @@ func (t *BashTarget) RenderSecurityGroup(a, e, changes *SecurityGroup) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return nil
-	//return output.AddAWSTags(cloud.Tags(), r, "route-table-association")
+	return t.AddAWSTags(e, "security-group", t.cloud.BuildTags(e.Name))
 }
 
 func (s *SecurityGroup) AllowFrom(source *SecurityGroup) *SecurityGroupIngress {

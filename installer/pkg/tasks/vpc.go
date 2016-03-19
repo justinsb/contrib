@@ -16,7 +16,7 @@ type VPCRenderer interface {
 type VPC struct {
 	fi.SimpleUnit
 
-	NameTag            *string
+	Name               *string
 	ID                 *string
 	CIDR               *string
 	EnableDNSHostnames *bool
@@ -24,11 +24,23 @@ type VPC struct {
 }
 
 func (s *VPC) Key() string {
-	return *s.NameTag
+	return *s.Name
 }
 
 func (s *VPC) GetID() *string {
 	return s.ID
+}
+
+func (v *VPC) String() string {
+	s := "VPC{"
+	if v.CIDR != nil {
+		s = s + "CIDR=" + *v.CIDR + " "
+	}
+	if v.ID != nil {
+		s = s + "ID=" + *v.ID + " "
+	}
+	s = s + "}"
+	return s
 }
 
 func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
@@ -36,7 +48,7 @@ func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
 
 	actual := &VPC{}
 	request := &ec2.DescribeVpcsInput{
-		Filters: cloud.BuildFilters(),
+		Filters: cloud.BuildFilters(e.Name),
 	}
 
 	response, err := cloud.EC2.DescribeVpcs(request)
@@ -51,6 +63,7 @@ func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
 		}
 		vpc := response.Vpcs[0]
 		actual.ID = vpc.VpcId
+		actual.CIDR = vpc.CidrBlock
 		glog.V(2).Infof("found matching VPC %q", *actual.ID)
 	}
 
@@ -81,6 +94,10 @@ func (e *VPC) Run(c *fi.RunContext) error {
 		return err
 	}
 
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
+	}
+
 	changes := &VPC{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {
@@ -90,10 +107,6 @@ func (e *VPC) Run(c *fi.RunContext) error {
 
 	target := c.Target.(VPCRenderer)
 	return target.RenderVPC(a, e, changes)
-}
-
-func (v *VPC) String() string {
-	return fmt.Sprintf("VPC (cidr=%s)", v.CIDR)
 }
 
 func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
@@ -121,12 +134,6 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 		}
 
 		e.ID = response.Vpc.VpcId
-
-		err = t.AddAWSTags(t.cloud.Tags(), *e.ID, "vpc")
-		if err != nil {
-			// TODO: Delete VPC?
-			return fmt.Errorf("error tagging VPC: %v", err)
-		}
 	}
 
 	if changes.EnableDNSSupport != nil {
@@ -151,7 +158,7 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 		}
 	}
 
-	return nil
+	return t.AddAWSTags(*e.ID, "vpc", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
@@ -167,8 +174,6 @@ func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
 		glog.V(2).Infof("Creating VPC with CIDR: %q", *e.CIDR)
 
 		t.AddEC2Command("create-vpc", "--cidr-block", *e.CIDR, "--query", "Vpc.VpcId").AssignTo(e)
-
-		t.AddAWSTags(t.cloud.Tags(), e, "vpc")
 	} else {
 		if changes.CIDR != nil {
 			// TODO: Do we want to destroy & recreate the CIDR?
@@ -188,5 +193,5 @@ func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
 		t.AddEC2Command("modify-vpc-attribute", "--vpc-id", t.ReadVar(e), "--enable-dns-hostnames", s)
 	}
 
-	return nil
+	return t.AddAWSTags(e, "vpc", t.cloud.BuildTags(e.Name))
 }

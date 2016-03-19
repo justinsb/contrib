@@ -561,16 +561,18 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: fi.NewFileResource("~/.ssh/id_rsa.pub")}
 	c.Add(sshKey)
 
-	vpc := &VPC{CIDR:String("172.20.0.0/16"), NameTag: String("kubernetes-" + clusterID)}
+	vpc := &VPC{CIDR:String("172.20.0.0/16"), Name: String("kubernetes-" + clusterID)}
 	c.Add(vpc)
 
-	subnet := &Subnet{VPC: vpc, AvailabilityZone: &az, CIDR: String("172.20.0.0/24")}
+	subnet := &Subnet{VPC: vpc, AvailabilityZone: &az, CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID)}
 	c.Add(subnet)
 
-	igw := &InternetGateway{VPC: vpc}
+	igw := &InternetGateway{Name: String("kubernetes-" + clusterID)}
 	c.Add(igw)
 
-	routeTable := &RouteTable{VPC: vpc}
+	c.Add(&InternetGatewayAttachment{VPC: vpc, InternetGateway: igw})
+
+	routeTable := &RouteTable{VPC: vpc, Name: String("kubernetes-" + clusterID)}
 	c.Add(routeTable)
 
 	route := &Route{RouteTable: routeTable, CIDR: String("0.0.0.0/0"), InternetGateway: igw}
@@ -588,6 +590,18 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		VPC:         vpc}
 	c.Add(nodeSG)
 
+	c.Add(masterSG.AllowFrom(masterSG))
+	c.Add(masterSG.AllowFrom(nodeSG))
+	c.Add(nodeSG.AllowFrom(masterSG))
+	c.Add(nodeSG.AllowFrom(nodeSG))
+
+	// SSH is open to the world
+	c.Add(nodeSG.AllowTCP("0.0.0.0/0", 22, 22))
+	c.Add(masterSG.AllowTCP("0.0.0.0/0", 22, 22))
+
+	// HTTPS to the master is allowed (for API access)
+	c.Add(masterSG.AllowTCP("0.0.0.0/0", 443, 443))
+	
 	masterUserData := &MasterScript{
 		Config: k,
 	}
@@ -657,17 +671,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(nodeGroup)
 
-	c.Add(masterSG.AllowFrom(masterSG))
-	c.Add(masterSG.AllowFrom(nodeSG))
-	c.Add(nodeSG.AllowFrom(masterSG))
-	c.Add(nodeSG.AllowFrom(nodeSG))
-
-	// SSH is open to the world
-	c.Add(nodeSG.AllowTCP("0.0.0.0/0", 22, 22))
-	c.Add(masterSG.AllowTCP("0.0.0.0/0", 22, 22))
-
-	// HTTPS to the master is allowed (for API access)
-	c.Add(masterSG.AllowTCP("0.0.0.0/0", 443, 443))
 }
 
 func staticResource(key string) fi.Resource {

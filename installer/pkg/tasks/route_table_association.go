@@ -42,8 +42,7 @@ func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, 
 		return nil, nil
 	}
 
-	filters := cloud.BuildFilters()
-	filters = append(filters, fi.NewEC2Filter("association.subnet-id", *subnetID))
+	filters := []*ec2.Filter{fi.NewEC2Filter("association.subnet-id", *subnetID)}
 	request := &ec2.DescribeRouteTablesInput{
 		RouteTableIds: []*string{routeTableID},
 		Filters:       filters,
@@ -77,6 +76,10 @@ func (e *RouteTableAssociation) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
+	}
+
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
 	}
 
 	changes := &RouteTableAssociation{}
@@ -132,7 +135,7 @@ func (t *AWSAPITarget) RenderRouteTableAssociation(a, e, changes *RouteTableAsso
 		e.ID = response.AssociationId
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return t.AddAWSTags(*e.ID, "route-table-association", t.cloud.BuildTags(nil))
 }
 
 func (t *BashTarget) RenderRouteTableAssociation(a, e, changes *RouteTableAssociation) error {
@@ -148,6 +151,5 @@ func (t *BashTarget) RenderRouteTableAssociation(a, e, changes *RouteTableAssoci
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return nil
-	//return output.AddAWSTags(cloud.Tags(), r, "route-table-association")
+	return t.AddAWSTags(e, "route-table-association", t.cloud.BuildTags(nil))
 }

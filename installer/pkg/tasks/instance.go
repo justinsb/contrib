@@ -37,8 +37,7 @@ func (s *Instance) GetID() *string {
 func (e *Instance) find(c *fi.RunContext) (*Instance, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	filters := cloud.BuildFilters()
-	filters = append(filters, fi.NewEC2Filter("tag:Name", *e.Name))
+	filters := cloud.BuildFilters(e.Name)
 	filters = append(filters, fi.NewEC2Filter("instance-state-name", "pending", "running", "stopping", "stopped"))
 	request := &ec2.DescribeInstancesInput{
 		Filters: filters,
@@ -77,6 +76,10 @@ func (e *Instance) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
+	}
+
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
 	}
 
 	changes := &Instance{}
@@ -153,18 +156,10 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		}
 
 		e.ID = response.Instances[0].InstanceId
-
-		tags := make(map[string]string)
-		for k, v := range e.Tags {
-			tags[k] = v
-		}
-		if e.Name != nil {
-			tags["Name"] = *e.Name
-		}
-		return t.cloud.CreateTags("instance", *e.ID, tags)
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	tags := map[string]string{"Name": *e.Name}
+	return t.AddAWSTags(*e.ID, "instance", tags)
 }
 
 func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
@@ -189,18 +184,8 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 		t.AddAssignment(e, aws.StringValue(a.ID))
 	}
 
-	//tags := cloud.Tags()
-	tags := make(map[string]string)
-	tags["Name"] = *e.Name
-
-	if e.Tags != nil {
-		for k, v := range e.Tags {
-			tags[k] = v
-		}
-	}
-	//return t.AddAWSTags(tags, i, "instance")
-
-	return nil
+	tags := map[string]string{"Name": *e.Name}
+	return t.AddAWSTags(e, "instance", tags)
 }
 
 /*

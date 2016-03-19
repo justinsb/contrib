@@ -15,12 +15,12 @@ type InternetGatewayRenderer interface {
 type InternetGateway struct {
 	fi.SimpleUnit
 
-	ID  *string
-	VPC *VPC
+	Name *string
+	ID   *string
 }
 
 func (s *InternetGateway) Key() string {
-	return s.VPC.Key() + "-igw"
+	return *s.Name
 }
 
 func (s *InternetGateway) GetID() *string {
@@ -28,17 +28,11 @@ func (s *InternetGateway) GetID() *string {
 }
 
 func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
-	vpcID := e.VPC.ID
-	if vpcID == nil {
-		return nil, nil
-	}
-
 	cloud := c.Cloud().(*fi.AWSCloud)
 
 	actual := &InternetGateway{}
 
-	filters := cloud.BuildFilters()
-	filters = append(filters, fi.NewEC2Filter("attachment.vpc-id", *vpcID))
+	filters := cloud.BuildFilters(e.Name)
 	request := &ec2.DescribeInternetGatewaysInput{
 		Filters: filters,
 	}
@@ -55,7 +49,6 @@ func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
 		}
 		igw := response.InternetGateways[0]
 		actual.ID = igw.InternetGatewayId
-		actual.VPC = &VPC{ID:  vpcID }
 		glog.V(2).Infof("found matching InternetGateway %q", *actual.ID)
 	}
 
@@ -66,6 +59,10 @@ func (e *InternetGateway) Run(c *fi.RunContext) error {
 	a, err := e.find(c)
 	if err != nil {
 		return err
+	}
+
+	if a != nil && e.ID == nil {
+		e.ID = a.ID
 	}
 
 	changes := &InternetGateway{}
@@ -85,10 +82,6 @@ func (e *InternetGateway) Run(c *fi.RunContext) error {
 
 func (s *InternetGateway) checkChanges(a, e, changes *InternetGateway) error {
 	if a != nil {
-		// TODO: I think we can change it; we just detatch & attach
-		if changes.VPC.ID != nil {
-			return InvalidChangeError("Cannot change InternetGateway VPC", changes.VPC.ID, e.VPC.ID)
-		}
 	}
 	return nil
 }
@@ -96,8 +89,6 @@ func (s *InternetGateway) checkChanges(a, e, changes *InternetGateway) error {
 func (t *AWSAPITarget) RenderInternetGateway(a, e, changes *InternetGateway) error {
 	if a == nil {
 		glog.V(2).Infof("Creating InternetGateway")
-
-		vpcID := e.VPC.ID
 
 		request := &ec2.CreateInternetGatewayInput{
 		}
@@ -109,33 +100,18 @@ func (t *AWSAPITarget) RenderInternetGateway(a, e, changes *InternetGateway) err
 
 		igw := response.InternetGateway
 		e.ID = igw.InternetGatewayId
-
-		attachRequest := &ec2.AttachInternetGatewayInput{
-			VpcId: vpcID,
-			InternetGatewayId: igw.InternetGatewayId,
-		}
-
-		_, err = t.cloud.EC2.AttachInternetGateway(attachRequest)
-		if err != nil {
-			return fmt.Errorf("error attaching InternetGateway: %v", err)
-		}
-
 	}
 
-	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+	return t.AddAWSTags(*e.ID, "internet-gateway", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderInternetGateway(a, e, changes *InternetGateway) error {
 	t.CreateVar(e)
 	if a == nil {
-		vpcID := t.ReadVar(e.VPC)
-
 		t.AddEC2Command("create-internet-gateway", "--query", "InternetGateway.InternetGatewayId").AssignTo(e)
-		t.AddEC2Command("attach-internet-gateway", "--internet-gateway-id", t.ReadVar(e), "--vpc-id", vpcID)
 	} else {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return nil
-	//return output.AddAWSTags(cloud.Tags(), g, "internet-gateway")
+	return t.AddAWSTags(e, "internet-gateway", t.cloud.BuildTags(e.Name))
 }

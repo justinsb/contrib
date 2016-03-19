@@ -87,11 +87,11 @@ func (c *BashCommand) AssignTo(s fi.Unit) *BashCommand {
 	return c
 }
 
-func (c *BashCommand) DebugDump() {
+func (c *BashCommand) String() string {
 	if c.assignTo != nil {
-		glog.Info("CMD: ", c.assignTo.name, "=`", c.args, "`")
+		return c.assignTo.name + "=`" + strings.Join(c.args, " ") + "`"
 	} else {
-		glog.Info("CMD: ", c.args)
+		return strings.Join(c.args, " ")
 	}
 }
 
@@ -132,7 +132,7 @@ func (t *BashTarget) ReadVar(s fi.Unit) string {
 
 func (t *BashTarget) DebugDump() {
 	for _, cmd := range t.commands {
-		cmd.DebugDump()
+		glog.Info("CMD: ", cmd)
 	}
 }
 
@@ -215,7 +215,7 @@ func bashQuoteString(s string) string {
 	return "\"" + string(quoted.Bytes()) + "\""
 }
 
-func (t *BashTarget) AddAWSTags(expected map[string]string, s fi.Unit, resourceType string) error {
+func (t *BashTarget) AddAWSTags(s fi.Unit, resourceType string, expected map[string]string) error {
 	resourceId, exists := t.FindValue(s)
 	var missing map[string]string
 	if exists {
@@ -246,6 +246,7 @@ func (t *BashTarget) AddAWSTags(expected map[string]string, s fi.Unit, resourceT
 }
 
 func (t *BashTarget) AddCommand(cmd *BashCommand) *BashCommand {
+	glog.V(2).Infof("Add bash command: %v", cmd)
 	t.commands = append(t.commands, cmd)
 
 	return cmd
