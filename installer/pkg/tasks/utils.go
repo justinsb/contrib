@@ -77,7 +77,6 @@ func BuildString(v interface{}) string {
 	return string(data)
 }
 
-
 func RandomToken(length int) string {
 	// This is supposed to be the same algorithm as the old bash algorithm
 	// KUBELET_TOKEN=$(dd if=/dev/urandom bs=128 count=1 2>/dev/null | base64 | tr -d "=+/" | dd bs=32 count=1 2>/dev/null)
@@ -108,3 +107,17 @@ func RandomToken(length int) string {
 }
 
 var templateDir = "templates"
+
+func String(s string) *string {
+	return &s
+}
+
+func Bool(v bool) *bool {
+	return &v
+}
+
+func Int64(v int64) *int64 {
+	return &v
+}
+
+
