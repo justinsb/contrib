@@ -26,8 +26,8 @@ type AutoscalingGroupRenderer interface {
 	RenderAutoscalingGroup(actual, expected, changes *AutoscalingGroup) error
 }
 
-func (s *AutoscalingGroup) Prefix() string {
-	return "AutoscalingGroup"
+func (s *AutoscalingGroup) Key() string {
+	return *s.Name
 }
 
 func (s *AutoscalingGroup) GetID() *string {

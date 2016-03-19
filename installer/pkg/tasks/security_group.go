@@ -21,8 +21,8 @@ type SecurityGroup struct {
 	VPC         *VPC
 }
 
-func (s *SecurityGroup) Prefix() string {
-	return "SecurityGroup"
+func (s *SecurityGroup) Key() string {
+	return *s.Name
 }
 
 func (s *SecurityGroup) GetID() *string {

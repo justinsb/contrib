@@ -26,8 +26,8 @@ type Instance struct {
 	Tags             map[string]string
 }
 
-func (s *Instance) Prefix() string {
-	return "Instance"
+func (s *Instance) Key() string {
+	return *s.Name
 }
 
 func (s *Instance) GetID() *string {

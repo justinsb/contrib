@@ -23,16 +23,12 @@ type PersistentVolumeRenderer interface {
 	RenderPersistentVolume(actual, expected, changes *PersistentVolume) error
 }
 
-func (s *PersistentVolume) Prefix() string {
-	return "PersistentVolume"
-}
-
-func (s *PersistentVolume) GetID() *string {
-	return s.ID
+func (s *PersistentVolume) Key() string {
+	return *s.Name
 }
 
 func (s *PersistentVolume) String() string {
-	return BuildString(s)
+	return JsonString(s)
 }
 
 func (e *PersistentVolume) find(c *fi.RunContext) (*PersistentVolume, error) {

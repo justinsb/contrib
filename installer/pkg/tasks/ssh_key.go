@@ -22,8 +22,8 @@ type SSHKey struct {
 	fingerprint *string
 }
 
-func (s *SSHKey) Prefix() string {
-	return "SSHKey"
+func (s *SSHKey) Key() string {
+	return *s.Name
 }
 
 func (s *SSHKey) GetID() *string {

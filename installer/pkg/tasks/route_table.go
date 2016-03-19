@@ -19,8 +19,8 @@ type RouteTable struct {
 	VPC *VPC
 }
 
-func (s *RouteTable) Prefix() string {
-	return "RouteTable"
+func (s *RouteTable) Key() string {
+	return s.VPC.Key() + "-routetable"
 }
 
 func (s *RouteTable) GetID() *string {

@@ -15,11 +15,13 @@ type RouteTableAssociationRenderer interface {
 type RouteTableAssociation struct {
 	fi.SimpleUnit
 
-	ID           *string
-	RouteTable   *RouteTable
-	RouteTableID *string
-	Subnet       *Subnet
-	SubnetID     *string
+	ID         *string
+	RouteTable *RouteTable
+	Subnet     *Subnet
+}
+
+func (s *RouteTableAssociation) Key() string {
+	return s.RouteTable.Key() + "-" + s.Subnet.Key()
 }
 
 func (s *RouteTableAssociation) Prefix() string {
@@ -33,15 +35,8 @@ func (s *RouteTableAssociation) GetID() *string {
 func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	routeTableID := e.RouteTableID
-	if routeTableID == nil && e.RouteTable != nil {
-		routeTableID = e.RouteTable.ID
-	}
-
-	subnetID := e.SubnetID
-	if subnetID == nil && e.Subnet != nil {
-		subnetID = e.Subnet.ID
-	}
+	routeTableID := e.RouteTable.ID
+	subnetID := e.Subnet.ID
 
 	if routeTableID == nil || subnetID == nil {
 		return nil, nil
@@ -68,8 +63,8 @@ func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, 
 		for _, rta := range rt.Associations {
 			actual := &RouteTableAssociation{}
 			actual.ID = rta.RouteTableAssociationId
-			actual.RouteTableID = rta.RouteTableId
-			actual.SubnetID = rta.SubnetId
+			actual.RouteTable = &RouteTable{ID: rta.RouteTableId }
+			actual.Subnet = &Subnet{ID: rta.SubnetId}
 			glog.V(2).Infof("found matching RouteTableAssociation %q", *actual.ID)
 			return actual, nil
 		}
@@ -101,11 +96,11 @@ func (e *RouteTableAssociation) Run(c *fi.RunContext) error {
 
 func (s *RouteTableAssociation) checkChanges(a, e, changes *RouteTableAssociation) error {
 	if a != nil {
-		if changes.RouteTableID != nil {
-			return InvalidChangeError("Cannot change RouteTableAssociation RouteTable", changes.RouteTableID, e.RouteTableID)
+		if changes.RouteTable.ID != nil {
+			return InvalidChangeError("Cannot change RouteTableAssociation RouteTable", changes.RouteTable.ID, e.RouteTable.ID)
 		}
-		if changes.SubnetID != nil {
-			return InvalidChangeError("Cannot change RouteTableAssociation Subnet", changes.SubnetID, e.SubnetID)
+		if changes.Subnet.ID != nil {
+			return InvalidChangeError("Cannot change RouteTableAssociation Subnet", changes.Subnet.ID, e.Subnet.ID)
 		}
 	}
 	return nil
@@ -113,18 +108,12 @@ func (s *RouteTableAssociation) checkChanges(a, e, changes *RouteTableAssociatio
 
 func (t *AWSAPITarget) RenderRouteTableAssociation(a, e, changes *RouteTableAssociation) error {
 	if a == nil {
-		subnetID := e.SubnetID
-		if subnetID == nil && e.Subnet != nil {
-			subnetID = e.Subnet.ID
-		}
+		subnetID := e.Subnet.ID
 		if subnetID == nil {
 			return MissingValueError("Must specify Subnet for RouteTableAssociation create")
 		}
 
-		routeTableID := e.RouteTableID
-		if routeTableID == nil && e.RouteTable != nil {
-			routeTableID = e.RouteTable.ID
-		}
+		routeTableID := e.RouteTable.ID
 		if routeTableID == nil {
 			return MissingValueError("Must specify RouteTable for RouteTableAssociation create")
 		}
@@ -149,15 +138,8 @@ func (t *AWSAPITarget) RenderRouteTableAssociation(a, e, changes *RouteTableAsso
 func (t *BashTarget) RenderRouteTableAssociation(a, e, changes *RouteTableAssociation) error {
 	t.CreateVar(e)
 	if a == nil {
-		subnetID := StringValue(e.SubnetID)
-		if subnetID == "" {
-			subnetID = t.ReadVar(e.Subnet)
-		}
-
-		routeTableID := StringValue(e.RouteTableID)
-		if routeTableID == "" {
-			routeTableID = t.ReadVar(e.RouteTable)
-		}
+		subnetID := t.ReadVar(e.Subnet)
+		routeTableID := t.ReadVar(e.RouteTable)
 
 		glog.V(2).Infof("Creating RouteTableAssociation with RouteTable:%q Subnet:%q", routeTableID, subnetID)
 

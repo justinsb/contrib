@@ -116,7 +116,6 @@ func (c *Context) newNode(unit Unit) *node {
 }
 
 func (c *Context) initializeNode(unit Unit) {
-
 	systemUnit, ok := unit.(SystemUnitInterface)
 	if ok {
 		if systemUnit.IsSystemUnit() {

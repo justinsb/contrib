@@ -15,13 +15,12 @@ type InternetGatewayRenderer interface {
 type InternetGateway struct {
 	fi.SimpleUnit
 
-	ID    *string
-	VPC   *VPC
-	VPCID *string
+	ID  *string
+	VPC *VPC
 }
 
-func (s *InternetGateway) Prefix() string {
-	return "InternetGateway"
+func (s *InternetGateway) Key() string {
+	return s.VPC.Key() + "-igw"
 }
 
 func (s *InternetGateway) GetID() *string {
@@ -29,11 +28,7 @@ func (s *InternetGateway) GetID() *string {
 }
 
 func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
-	vpcID := e.VPCID
-	if vpcID == nil && e.VPC != nil {
-		vpcID = e.VPC.ID
-	}
-
+	vpcID := e.VPC.ID
 	if vpcID == nil {
 		return nil, nil
 	}
@@ -60,7 +55,7 @@ func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
 		}
 		igw := response.InternetGateways[0]
 		actual.ID = igw.InternetGatewayId
-		actual.VPCID = vpcID
+		actual.VPC = &VPC{ID:  vpcID }
 		glog.V(2).Infof("found matching InternetGateway %q", *actual.ID)
 	}
 
@@ -91,8 +86,8 @@ func (e *InternetGateway) Run(c *fi.RunContext) error {
 func (s *InternetGateway) checkChanges(a, e, changes *InternetGateway) error {
 	if a != nil {
 		// TODO: I think we can change it; we just detatch & attach
-		if changes.VPCID != nil {
-			return InvalidChangeError("Cannot change InternetGateway VPC", changes.VPCID, e.VPCID)
+		if changes.VPC.ID != nil {
+			return InvalidChangeError("Cannot change InternetGateway VPC", changes.VPC.ID, e.VPC.ID)
 		}
 	}
 	return nil
@@ -102,12 +97,10 @@ func (t *AWSAPITarget) RenderInternetGateway(a, e, changes *InternetGateway) err
 	if a == nil {
 		glog.V(2).Infof("Creating InternetGateway")
 
-		vpcID := e.VPCID
-		if vpcID == nil && e.VPC != nil {
-			vpcID = e.VPC.ID
-		}
+		vpcID := e.VPC.ID
 
-		request := &ec2.CreateInternetGatewayInput{}
+		request := &ec2.CreateInternetGatewayInput{
+		}
 
 		response, err := t.cloud.EC2.CreateInternetGateway(request)
 		if err != nil {
@@ -116,6 +109,17 @@ func (t *AWSAPITarget) RenderInternetGateway(a, e, changes *InternetGateway) err
 
 		igw := response.InternetGateway
 		e.ID = igw.InternetGatewayId
+
+		attachRequest := &ec2.AttachInternetGatewayInput{
+			VpcId: vpcID,
+			InternetGatewayId: igw.InternetGatewayId,
+		}
+
+		_, err = t.cloud.EC2.AttachInternetGateway(attachRequest)
+		if err != nil {
+			return fmt.Errorf("error attaching InternetGateway: %v", err)
+		}
+
 	}
 
 	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
@@ -124,10 +128,7 @@ func (t *AWSAPITarget) RenderInternetGateway(a, e, changes *InternetGateway) err
 func (t *BashTarget) RenderInternetGateway(a, e, changes *InternetGateway) error {
 	t.CreateVar(e)
 	if a == nil {
-		vpcID := StringValue(e.VPCID)
-		if vpcID == "" {
-			vpcID = t.ReadVar(e.VPC)
-		}
+		vpcID := t.ReadVar(e.VPC)
 
 		t.AddEC2Command("create-internet-gateway", "--query", "InternetGateway.InternetGatewayId").AssignTo(e)
 		t.AddEC2Command("attach-internet-gateway", "--internet-gateway-id", t.ReadVar(e), "--vpc-id", vpcID)

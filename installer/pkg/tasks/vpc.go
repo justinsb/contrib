@@ -16,10 +16,15 @@ type VPCRenderer interface {
 type VPC struct {
 	fi.SimpleUnit
 
+	NameTag            *string
 	ID                 *string
 	CIDR               *string
 	EnableDNSHostnames *bool
 	EnableDNSSupport   *bool
+}
+
+func (s *VPC) Key() string {
+	return *s.NameTag
 }
 
 func (s *VPC) GetID() *string {
@@ -85,10 +90,6 @@ func (e *VPC) Run(c *fi.RunContext) error {
 
 	target := c.Target.(VPCRenderer)
 	return target.RenderVPC(a, e, changes)
-}
-
-func (v *VPC) Prefix() string {
-	return "Vpc"
 }
 
 func (v *VPC) String() string {

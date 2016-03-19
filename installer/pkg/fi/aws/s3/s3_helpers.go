@@ -117,6 +117,9 @@ func (b*S3Bucket) FindObjectIfExists(key string) (*S3Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	if response == nil {
+		return nil, nil
+	}
 	o.etag = response.ETag
 	return o, nil
 }
@@ -145,6 +148,7 @@ func (b*S3Bucket) PutObject(key string, body io.ReadSeeker) (*S3Object, error) {
 }
 
 func (o*S3Object) putObject(body io.ReadSeeker) (*s3.PutObjectOutput, error) {
+	glog.Infof("Uploading object to %q", o)
 	request := &s3.PutObjectInput{
 		Bucket: aws.String(o.Bucket.Name),
 		Key:    aws.String(o.Key),
@@ -152,7 +156,7 @@ func (o*S3Object) putObject(body io.ReadSeeker) (*s3.PutObjectOutput, error) {
 	}
 	response, err := o.Bucket.s3.PutObject(request)
 	if err != nil {
-		return nil, fmt.Errorf("error uploading S3 object %q: %v", o.friendlyName(), err)
+		return nil, fmt.Errorf("error uploading S3 object %q: %v", o, err)
 	}
 
 	return response, nil
@@ -174,18 +178,18 @@ func (o*S3Object) headObject() (*s3.HeadObjectOutput, error) {
 	if err != nil {
 		if requestFailure, ok := err.(awserr.RequestFailure); ok {
 			if requestFailure.StatusCode() == 404 {
-				glog.V(4).Infof("S3 file does not exist: %q", o.friendlyName())
+				glog.V(4).Infof("S3 file does not exist: %q", o)
 				return nil, nil
 			}
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("error getting S3 metadata for %q: %v", o.friendlyName(), err)
+		return nil, fmt.Errorf("error getting S3 metadata for %q: %v", o, err)
 	}
 	return response, nil
 }
 
-func (o*S3Object) friendlyName() string {
+func (o*S3Object) String() string {
 	return fmt.Sprintf("s3://%s/%s", o.Bucket.Name, o.Key)
 }
 
@@ -196,7 +200,7 @@ func (o*S3Object) IsPublic() (bool, error) {
 	}
 	aclResponse, err := o.Bucket.s3.GetObjectAcl(aclRequest)
 	if err != nil {
-		return false, fmt.Errorf("error getting S3 ACL for %q: %v", o.friendlyName(), err)
+		return false, fmt.Errorf("error getting S3 ACL for %q: %v", o, err)
 	}
 
 	isPublic := false
@@ -218,7 +222,19 @@ func (o*S3Object) IsPublic() (bool, error) {
 }
 
 func (o*S3Object) Etag() (string, error) {
-	return *o.etag, nil
+	etag := *o.etag
+	if len(etag) > 0 {
+		if etag[0] == '"' {
+			etag = etag[1:]
+		}
+	}
+	if len(etag) > 0 {
+		if etag[len(etag) - 1] == '"' {
+			etag = etag[:len(etag) - 1]
+		}
+	}
+
+	return etag, nil
 }
 
 func (o*S3Object) PublicURL() (string) {
@@ -230,11 +246,11 @@ func (o*S3Object) SetPublicACL() (error) {
 	request := &s3.PutObjectAclInput{
 		Bucket: aws.String(o.Bucket.Name),
 		Key: aws.String(o.Key),
-		GrantRead: aws.String(aclAllUsers),
+		GrantRead: aws.String("uri=\"" + aclAllUsers + "\""),
 	}
 	_, err := o.Bucket.s3.PutObjectAcl(request)
 	if err != nil {
-		return fmt.Errorf("error setting S3 ACL for %q: %v", o.friendlyName(), err)
+		return fmt.Errorf("error setting S3 ACL for %q: %v", o, err)
 	}
 
 	return nil

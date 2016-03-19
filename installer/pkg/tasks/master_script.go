@@ -17,6 +17,10 @@ type MasterScript struct {
 	contents string
 }
 
+func (s *MasterScript) Key() string {
+	return "master-script"
+}
+
 var _ fi.Resource = &MasterScript{}
 
 type NodeScript struct {
@@ -28,6 +32,10 @@ type NodeScript struct {
 }
 
 var _ fi.Resource = &NodeScript{}
+
+func (s *NodeScript) Key() string {
+	return "node-script"
+}
 
 //func (m *NodeScript) Prefix() string {
 //	return "node_script"

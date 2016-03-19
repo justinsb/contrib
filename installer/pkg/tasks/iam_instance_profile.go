@@ -19,8 +19,8 @@ type IAMInstanceProfile struct {
 	Name *string
 }
 
-func (s *IAMInstanceProfile) Prefix() string {
-	return "IAMInstanceProfile"
+func (s *IAMInstanceProfile) Key() string {
+	return *s.Name
 }
 
 func (s *IAMInstanceProfile) GetID() *string {

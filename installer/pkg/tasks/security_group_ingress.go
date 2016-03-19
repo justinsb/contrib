@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
+	"strconv"
 )
 
 type SecurityGroupIngressRenderer interface {
@@ -22,6 +23,26 @@ type SecurityGroupIngress struct {
 	FromPort      *int64
 	ToPort        *int64
 	SourceGroup   *SecurityGroup
+}
+
+func (s *SecurityGroupIngress) Key() string {
+	key := s.SecurityGroup.Key()
+	if s.Protocol != nil {
+		key += "-" + *s.Protocol
+	}
+	if s.FromPort != nil {
+		key += "-" + strconv.FormatInt(*s.FromPort, 10)
+	}
+	if s.ToPort != nil {
+		key += "-" + strconv.FormatInt(*s.ToPort, 10)
+	}
+	if s.CIDR != nil {
+		key += "-" + *s.CIDR
+	}
+	if s.SourceGroup != nil {
+		key += "-" + s.SourceGroup.Key()
+	}
+	return key
 }
 
 func (e *SecurityGroupIngress) find(c *fi.RunContext) (*SecurityGroupIngress, error) {

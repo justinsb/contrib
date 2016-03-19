@@ -21,8 +21,8 @@ type Route struct {
 	CIDR            *string
 }
 
-func (r *Route) Prefix() string {
-	return "Route"
+func (r *Route) Key() string {
+	return r.RouteTable.Key() + "-" + *r.CIDR
 }
 
 func (e *Route) find(c *fi.RunContext) (*Route, error) {

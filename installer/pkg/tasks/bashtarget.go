@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"path"
 	"strconv"
 	"strings"
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
-	"reflect"
 	"k8s.io/contrib/installer/pkg/fi/filestore"
+	"os"
 )
 
 type BashTarget struct {
@@ -47,8 +46,7 @@ type BashVar struct {
 }
 
 func getVariablePrefix(v fi.Unit) string {
-	t := reflect.TypeOf(v)
-	name := t.Name()
+	name := fi.GetTypeName(v)
 	name = strings.ToUpper(name)
 	return name
 }
@@ -290,39 +288,36 @@ func (t *BashTarget) generateDynamicPath(prefix string) string {
 	return p
 }
 
-func (t *BashTarget) AddLocalResource(resource fi.Resource) (string, error) {
-	//dynamicResource, ok := resource.(fi.DynamicResource)
-	//if ok {
-	//	path := t.generateDynamicPath(dynamicResource.Prefix())
-	//	f, err := os.Create(path)
-	//	if err != nil {
-	//		return "", err
-	//	}
-	//	defer func() {
-	//		err := f.Close()
-	//		if err != nil {
-	//			glog.Warning("Error closing resource file", err)
-	//		}
-	//	}()
-	//
-	//	err = dynamicResource.WriteTo(f)
-	//	if err != nil {
-	//		return "", fmt.Errorf("error writing resource: %v", err)
-	//	}
-	//
-	//	return path, nil
-	//}
-
-	switch r := resource.(type) {
+func (t *BashTarget) AddLocalResource(r fi.Resource) (string, error) {
+	switch r := r.(type) {
 	case *fi.FileResource:
 		return r.Path, nil
-	default:
-		log.Fatal("unknown resource type: ", r)
-		return "", fmt.Errorf("unknown resource type: %v", r)
 	}
+
+	path := t.generateDynamicPath(fi.GetTypeName(r))
+	f, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			glog.Warning("Error closing resource file", err)
+		}
+	}()
+
+	err = fi.CopyResource(f, r)
+	if err != nil {
+		return "", fmt.Errorf("error writing resource: %v", err)
+	}
+
+	return path, nil
 }
 
 func (t *BashTarget) PutResource(key string, r fi.Resource) (string, string, error) {
+	if r == nil {
+		glog.Fatalf("Attempt to put null resource for %q", key)
+	}
 	return t.filestore.PutResource(key, r)
 }
 

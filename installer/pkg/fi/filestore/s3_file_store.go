@@ -3,6 +3,7 @@ package filestore
 import (
 	"k8s.io/contrib/installer/pkg/fi"
 	fi_s3 "k8s.io/contrib/installer/pkg/fi/aws/s3"
+"github.com/golang/glog"
 )
 
 type S3FileStore struct {
@@ -39,6 +40,8 @@ func (s*S3FileStore) PutResource(key string, r fi.Resource) (string, string, err
 		}
 		if s3hash == hash {
 			alreadyPresent = true
+		} else {
+			glog.Infof("Found file, but did not match: %q (%s vs %s)", o, s3hash, hash)
 		}
 	}
 
@@ -49,7 +52,7 @@ func (s*S3FileStore) PutResource(key string, r fi.Resource) (string, string, err
 		}
 		defer fi.SafeClose(body)
 
-		o, err = s.bucket.PutObject(key, body)
+		o, err = s.bucket.PutObject(s3key, body)
 		if err != nil {
 			return "", "", err
 		}

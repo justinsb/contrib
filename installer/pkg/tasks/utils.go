@@ -69,7 +69,7 @@ func StringValue(s *string) string {
 	return *s
 }
 
-func BuildString(v interface{}) string {
+func JsonString(v interface{}) string {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("error marshalling: %v", err)

@@ -22,8 +22,8 @@ type IAMRolePolicy struct {
 	PolicyDocument fi.Resource
 }
 
-func (s *IAMRolePolicy) Prefix() string {
-	return "IAMRolePolicy"
+func (s *IAMRolePolicy) Key() string {
+	return *s.Name
 }
 
 func (s *IAMRolePolicy) GetID() *string {

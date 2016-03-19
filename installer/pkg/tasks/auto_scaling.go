@@ -15,8 +15,8 @@ type AutoscalingLaunchConfiguration struct {
 	Name *string
 }
 
-func (l *AutoscalingLaunchConfiguration) Prefix() string {
-	return "AutoscalingLaunchConfiguration"
+func (l *AutoscalingLaunchConfiguration) Key() string {
+	return *l.Name
 }
 
 func (l *AutoscalingLaunchConfiguration) GetID() *string {
@@ -129,7 +129,6 @@ func (t *AWSAPITarget) RenderAutoscalingLaunchConfiguration(a, e, changes *Autos
 				request.BlockDeviceMappings = append(request.BlockDeviceMappings, b.ToAutoscaling())
 			}
 		}
-
 
 		if e.UserData != nil {
 			d, err := fi.ResourceAsString(e.UserData)

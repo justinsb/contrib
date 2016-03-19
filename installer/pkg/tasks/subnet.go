@@ -17,13 +17,12 @@ type Subnet struct {
 
 	ID               *string
 	VPC              *VPC
-	VPCID            *string
 	AvailabilityZone *string
 	CIDR             *string
 }
 
-func (s *Subnet) Prefix() string {
-	return "Subnet"
+func (s *Subnet) Key() string {
+	return s.VPC.Key() + "-" + *s.CIDR
 }
 
 func (s *Subnet) GetID() *string {
@@ -51,7 +50,7 @@ func (e *Subnet) find(c *fi.RunContext) (*Subnet, error) {
 		subnet := response.Subnets[0]
 		actual.ID = subnet.SubnetId
 		actual.AvailabilityZone = subnet.AvailabilityZone
-		actual.VPCID = subnet.VpcId
+		actual.VPC = &VPC{ID: subnet.VpcId}
 		glog.V(2).Infof("found matching subnet %q", *actual.ID)
 	}
 
@@ -81,9 +80,9 @@ func (e *Subnet) Run(c *fi.RunContext) error {
 
 func (s *Subnet) checkChanges(a, e, changes *Subnet) error {
 	if a != nil {
-		if changes.VPCID != nil {
+		if changes.VPC.ID != nil {
 			// TODO: Do we want to destroy & recreate the CIDR?
-			return InvalidChangeError("Cannot change subnet VPC", changes.VPCID, e.VPCID)
+			return InvalidChangeError("Cannot change subnet VPC", changes.VPC.ID, e.VPC.ID)
 		}
 		if changes.AvailabilityZone != nil {
 			// TODO: Do we want to destroy & recreate the CIDR?
@@ -106,8 +105,8 @@ func (t *AWSAPITarget) RenderSubnet(a, e, changes *Subnet) error {
 
 		glog.V(2).Infof("Creating Subnet with CIDR: %q", *e.CIDR)
 
-		vpcID := e.VPCID
-		if vpcID == nil && e.VPC != nil {
+		var vpcID *string
+		if e.VPC != nil {
 			vpcID = e.VPC.ID
 		}
 
@@ -136,10 +135,7 @@ func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
 			return MissingValueError("Must specify CIDR for Subnet create")
 		}
 
-		vpcID := StringValue(e.VPCID)
-		if vpcID == "" {
-			vpcID = t.ReadVar(e.VPC)
-		}
+		vpcID := t.ReadVar(e.VPC)
 
 		args := []string{"create-subnet", "--cidr-block", *e.CIDR, "--vpc-id", vpcID, "--query", "Subnet.SubnetId"}
 		if e.AvailabilityZone != nil {

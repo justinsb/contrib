@@ -151,6 +151,10 @@ type K8s struct {
 	EnableCustomMetrics           bool
 }
 
+func (k*K8s) Key() string {
+	return k.ClusterID
+}
+
 func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, error) {
 	y := map[string]interface{}{}
 	y["ENV_TIMESTAMP"] = time.Now().UTC().Format("2006-01-02T03:04:05+0000")
@@ -486,6 +490,9 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	//k.SaltTarHash = s3SaltFile.Hash()
 	//k.BootstrapScriptURL = s3BootstrapScriptFile.PublicURL()
 
+	k.ServerBinaryTar = findKubernetesTarGz()
+	k.SaltTar = findSaltTarGz()
+
 	masterPV := &PersistentVolume{
 		AvailabilityZone:         String(az),
 		Size:       Int64(int64(masterVolumeSize)),
@@ -554,7 +561,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: fi.NewFileResource("~/.ssh/id_rsa.pub")}
 	c.Add(sshKey)
 
-	vpc := &VPC{CIDR:String("172.20.0.0/16")}
+	vpc := &VPC{CIDR:String("172.20.0.0/16"), NameTag: String("kubernetes-" + clusterID)}
 	c.Add(vpc)
 
 	subnet := &Subnet{VPC: vpc, AvailabilityZone: &az, CIDR: String("172.20.0.0/24")}

@@ -20,6 +20,10 @@ type IAMInstanceProfileRole struct {
 	Role            *IAMRole
 }
 
+func (s *IAMInstanceProfileRole) Key() string {
+	return s.InstanceProfile.Key() + "-" + s.Role.Key()
+}
+
 func (e *IAMInstanceProfileRole) find(c *fi.RunContext) (*IAMInstanceProfileRole, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
