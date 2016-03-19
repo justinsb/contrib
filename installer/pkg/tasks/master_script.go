@@ -74,19 +74,19 @@ func buildScript(c *fi.RunContext, k *K8s, isMaster bool) (string, error) {
 
 	s.WriteHereDoc("kube_env.yaml", string(yamlData))
 
-	s.WriteString("wget -O bootstrap " + bootstrapScriptURL)
-	s.WriteString("chmod +x bootstrap")
-	s.WriteString("mkdir -p /etc/kubernetes")
-	s.WriteString("mv kube_env.yaml /etc/kubernetes")
-	s.WriteString("mv bootstrap /etc/kubernetes/")
+	s.WriteString("wget -O bootstrap " + bootstrapScriptURL + "\n")
+	s.WriteString("chmod +x bootstrap\n")
+	s.WriteString("mkdir -p /etc/kubernetes\n")
+	s.WriteString("mv kube_env.yaml /etc/kubernetes\n")
+	s.WriteString("mv bootstrap /etc/kubernetes/\n")
 
-	s.WriteString("cat > /etc/rc.local << EOF_RC_LOCAL")
-	s.WriteString("#!/bin/sh -e")
+	s.WriteString("cat > /etc/rc.local << EOF_RC_LOCAL\n")
+	s.WriteString("#!/bin/sh -e\n")
 	// We want to be sure that we don't pass an argument to bootstrap
-	s.WriteString("/etc/kubernetes/bootstrap")
-	s.WriteString("exit 0")
-	s.WriteString("EOF_RC_LOCAL")
-	s.WriteString("/etc/kubernetes/bootstrap")
+	s.WriteString("/etc/kubernetes/bootstrap\n")
+	s.WriteString("exit 0\n")
+	s.WriteString("EOF_RC_LOCAL\n")
+	s.WriteString("/etc/kubernetes/bootstrap\n")
 
 	return s.AsString(), nil
 }

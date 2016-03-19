@@ -109,6 +109,21 @@ func (s *StringResource) SameContents(path string) (bool, error) {
 	return HasContents(path, []byte(s.s))
 }
 
+type BytesResource struct {
+	data []byte
+}
+
+var _ Resource = &BytesResource{}
+
+func NewBytesResource(data []byte) *BytesResource {
+	return &BytesResource{data: data}
+}
+
+func (r *BytesResource) Open() (io.ReadSeeker, error) {
+	reader := bytes.NewReader([]byte(r.data))
+	return reader, nil
+}
+
 type FileResource struct {
 	Path string
 }

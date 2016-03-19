@@ -6,6 +6,11 @@ import (
 	"strconv"
 	"time"
 	"path"
+	"net"
+	"fmt"
+	"encoding/binary"
+	"math/big"
+	"encoding/base64"
 )
 
 type K8s struct {
@@ -51,7 +56,7 @@ type K8s struct {
 	MasterName                    string
 
 	ServiceClusterIPRange         string
-	EnableL7LoadBalancing         bool
+	EnableL7LoadBalancing         string
 	EnableClusterMonitoring       string
 	EnableClusterLogging          bool
 	EnableNodeLogging             bool
@@ -69,16 +74,16 @@ type K8s struct {
 
 	RuntimeConfig                 string
 
-	CaCert                        string
-	KubeletCert                   string
-	KubeletKey                    string
+	CACert                        fi.Resource
+	KubeletCert                   fi.Resource
+	KubeletKey                    fi.Resource
 	KubeletToken                  string
 	KubeProxyToken                string
 	BearerToken                   string
-	MasterCert                    string
-	MasterKey                     string
-	KubecfgCert                   string
-	KubecfgKey                    string
+	MasterCert                    fi.Resource
+	MasterKey                     fi.Resource
+	KubecfgCert                   fi.Resource
+	KubecfgKey                    fi.Resource
 
 	KubeletApiserver              string
 
@@ -206,9 +211,9 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	y["ADMISSION_CONTROL"] = k.AdmissionControl
 	y["MASTER_IP_RANGE"] = k.MasterIPRange
 	y["RUNTIME_CONFIG"] = k.RuntimeConfig
-	y["CA_CERT"] = k.CaCert
-	y["KUBELET_CERT"] = k.KubeletCert
-	y["KUBELET_KEY"] = k.KubeletKey
+	y["CA_CERT"] = ResourceAsBase64String(k.CACert)
+	y["KUBELET_CERT"] = ResourceAsBase64String(k.KubeletCert)
+	y["KUBELET_KEY"] = ResourceAsBase64String(k.KubeletKey)
 	y["NETWORK_PROVIDER"] = k.NetworkProvider
 	y["HAIRPIN_MODE"] = k.HairpinMode
 	y["OPENCONTRAIL_TAG"] = k.OpencontrailTag
@@ -220,40 +225,6 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	y["KUBE_ADDON_REGISTRY"] = k.KubeAddonRegistry
 	y["MULTIZONE"] = k.Multizone
 	y["NON_MASQUERADE_CIDR"] = k.NonMasqueradeCidr
-
-	//: $(yaml-quote ${ENABLE_CLUSTER_MONITORING:-none})
-	//: $(yaml-quote ${ENABLE_L7_LOADBALANCING:-none})
-	//: $(yaml-quote ${ENABLE_CLUSTER_LOGGING:-false})
-	//: $(yaml-quote ${ENABLE_CLUSTER_UI:-false})
-	//: $(yaml-quote ${ENABLE_NODE_LOGGING:-false})
-	//: $(yaml-quote ${LOGGING_DESTINATION:-})
-	//: $(yaml-quote ${ELASTICSEARCH_LOGGING_REPLICAS:-})
-	//: $(yaml-quote ${ENABLE_CLUSTER_DNS:-false})
-	//: $(yaml-quote ${ENABLE_CLUSTER_REGISTRY:-false})
-	//: $(yaml-quote ${CLUSTER_REGISTRY_DISK:-})
-	//: $(yaml-quote ${CLUSTER_REGISTRY_DISK_SIZE:-})
-	//: $(yaml-quote ${DNS_REPLICAS:-})
-	//: $(yaml-quote ${DNS_SERVER_IP:-})
-	//: $(yaml-quote ${DNS_DOMAIN:-})
-	//: $(yaml-quote ${KUBELET_TOKEN:-})
-	//: $(yaml-quote ${KUBE_PROXY_TOKEN:-})
-	//: $(yaml-quote ${ADMISSION_CONTROL:-})
-	//: $(yaml-quote ${MASTER_IP_RANGE})
-	//: $(yaml-quote ${RUNTIME_CONFIG})
-	//: $(yaml-quote ${CA_CERT_BASE64:-})
-	//: $(yaml-quote ${KUBELET_CERT_BASE64:-})
-	//: $(yaml-quote ${KUBELET_KEY_BASE64:-})
-	//: $(yaml-quote ${NETWORK_PROVIDER:-})
-	//: $(yaml-quote ${HAIRPIN_MODE:-})
-	//: $(yaml-quote ${OPENCONTRAIL_TAG:-})
-	//: $(yaml-quote ${OPENCONTRAIL_KUBERNETES_TAG:-})
-	//: $(yaml-quote ${OPENCONTRAIL_PUBLIC_SUBNET:-})
-	//: $(yaml-quote ${E2E_STORAGE_TEST_ENVIRONMENT:-})
-	//: $(yaml-quote ${KUBE_IMAGE_TAG:-})
-	//: $(yaml-quote ${KUBE_DOCKER_REGISTRY:-})
-	//: $(yaml-quote ${KUBE_ADDON_REGISTRY:-})
-	//: $(yaml-quote ${MULTIZONE:-})
-	//: $(yaml-quote ${NON_MASQUERADE_CIDR:-})
 
 	if k.KubeletPort != 0 {
 		y["KUBELET_PORT"] = k.KubeletPort
@@ -297,28 +268,15 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 		y["KUBE_USER"] = k.KubeUser
 		y["KUBE_PASSWORD"] = k.KubePassword
 		y["KUBE_BEARER_TOKEN"] = k.BearerToken
-		y["MASTER_CERT"] = k.MasterCert
-		y["MASTER_KEY"] = k.MasterKey
-		y["KUBECFG_CERT"] = k.KubecfgCert
-		y["KUBECFG_KEY"] = k.KubecfgKey
+		y["MASTER_CERT"] = ResourceAsBase64String(k.MasterCert)
+		y["MASTER_KEY"] = ResourceAsBase64String(k.MasterKey)
+		y["KUBECFG_CERT"] = ResourceAsBase64String(k.KubecfgCert)
+		y["KUBECFG_KEY"] = ResourceAsBase64String(k.KubecfgKey)
 		y["KUBELET_APISERVER"] = k.KubeletApiserver
 		y["ENABLE_MANIFEST_URL"] = k.EnableManifestURL
 		y["MANIFEST_URL"] = k.ManifestURL
 		y["MANIFEST_URL_HEADER"] = k.ManifestURLHeader
 		y["NUM_NODES"] = k.NodeCount
-
-		//	: $(yaml-quote ${KUBE_USER})
-		//: $(yaml-quote ${KUBE_PASSWORD})
-		//: $(yaml-quote ${KUBE_BEARER_TOKEN})
-		//: $(yaml-quote ${MASTER_CERT_BASE64:-})
-		//: $(yaml-quote ${MASTER_KEY_BASE64:-})
-		//: $(yaml-quote ${KUBECFG_CERT_BASE64:-})
-		//: $(yaml-quote ${KUBECFG_KEY_BASE64:-})
-		//: $(yaml-quote ${KUBELET_APISERVER:-})
-		//: $(yaml-quote ${ENABLE_MANIFEST_URL:-false})
-		//: $(yaml-quote ${MANIFEST_URL:-})
-		//: $(yaml-quote ${MANIFEST_URL_HEADER:-})
-		//: $(yaml-quote ${NUM_NODES})
 
 		if k.ApiserverTestArgs != "" {
 			y["APISERVER_TEST_ARGS"] = k.ApiserverTestArgs
@@ -376,15 +334,44 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 		y["RKT_PATH"] = k.RktPath
 		y["KUBERNETES_CONFIGURE_CBR0"] = k.KubernetesConfigureCbr0
 
-		//		: $(yaml-quote ${KUBE_MANIFESTS_TAR_URL})
-		//: $(yaml-quote ${KUBE_MANIFESTS_TAR_HASH})
-		//: $(yaml-quote ${CONTAINER_RUNTIME:-docker})
-		//: $(yaml-quote ${RKT_VERSION:-})
-		//: $(yaml-quote ${RKT_PATH:-})
-		//: $(yaml-quote ${KUBERNETES_CONFIGURE_CBR0:-true})
 	}
 
 	return y, nil
+}
+
+func (k*K8s) Init() {
+	k.MasterInstanceType = "m3.medium"
+	k.NodeInstanceType = "m3.medium"
+	k.MasterInternalIP = "172.20.0.9"
+	k.BootstrapScript = staticResource("aws/bootstrap-script")
+	k.NodeCount = 2
+	k.DockerStorage = "aufs"
+	k.MasterIPRange = "10.246.0.0/24"
+	k.MasterVolumeType = "gp2"
+	k.MasterVolumeSize = 20
+	k.Zone = "us-east-1b"
+	k.EnableClusterUI = true
+	k.EnableClusterDNS = true
+	k.EnableClusterLogging = true
+	k.LoggingDestination = "elasticsearch"
+	k.EnableClusterMonitoring = "influxdb" // "none" ?
+	k.EnableL7LoadBalancing = "none"
+	k.EnableNodeLogging = true
+	k.ElasticsearchLoggingReplicas = 1
+	k.DNSReplicas = 1
+	k.DNSServerIP = "10.0.0.10"
+	k.DNSDomain = "cluster.local"
+	k.AdmissionControl = "NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota,PersistentVolumeLabel"
+	k.ServiceClusterIPRange = "10.0.0.0/16"
+	k.ClusterIPRange = "10.244.0.0/16"
+
+	k.ServerBinaryTar = findKubernetesTarGz()
+	k.SaltTar = findSaltTarGz()
+
+	k.NetworkProvider = "none"
+
+	k.ContainerRuntime = "docker"
+	k.KubernetesConfigureCbr0 = "true"
 }
 
 func (k *K8s) Add(c *fi.BuildContext) {
@@ -393,28 +380,21 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		glog.Exit("cluster-id is required")
 	}
 
-	k.BootstrapScript = staticResource("aws/bootstrap-script")
-
-	masterInstanceType := k.MasterInstanceType
-	if masterInstanceType == "" {
-		masterInstanceType = "m3.medium"
-	}
-	nodeInstanceType := k.NodeInstanceType
-	if nodeInstanceType == "" {
-		nodeInstanceType = "m3.medium"
-	}
-
-	masterInternalIP := k.MasterInternalIP
-	if masterInternalIP == "" {
-		masterInstanceType = "172.20.0.9"
-	}
-
 	az := k.Zone
 	if len(az) <= 2 {
 		glog.Exit("Invalid AZ: ", az)
 	}
-	region := az[:len(az) - 1]
 
+	imageID := k.ImageID
+	if imageID == "" {
+		var err error
+		jessie := &DistroJessie{}
+		imageID, err = jessie.GetImageID(c.Context)
+		if err != nil {
+			glog.Exitf("error while trying to find AWS image: %v", err)
+		}
+	}
+	//region := az[:len(az) - 1]
 
 	//s3BucketName := k.S3BucketName
 	//if k.S3BucketName == "" {
@@ -426,31 +406,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	//if s3Region == "" {
 	//	s3Region = region
 	//}
-
-	nodeCount := k.NodeCount
-	if nodeCount == 0 {
-		nodeCount = 2
-	}
-
-	imageID := k.ImageID
-	if imageID == "" {
-		distro := &DistroVivid{}
-		imageID = distro.GetImageID(region)
-
-		if imageID == "" {
-			glog.Fatal("ImageID could not be determined")
-		}
-	}
-
-	masterVolumeSize := k.MasterVolumeSize
-	if masterVolumeSize == 0 {
-		masterVolumeSize = 20
-	}
-
-	masterVolumeType := k.MasterVolumeType
-	if masterVolumeType == "" {
-		masterVolumeType = "gp2"
-	}
 
 	//s3Bucket := &S3Bucket{
 	//	Name:         String(s3BucketName),
@@ -490,13 +445,12 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	//k.SaltTarHash = s3SaltFile.Hash()
 	//k.BootstrapScriptURL = s3BootstrapScriptFile.PublicURL()
 
-	k.ServerBinaryTar = findKubernetesTarGz()
-	k.SaltTar = findSaltTarGz()
+	c.Add(&CertBuilder{Kubernetes: k})
 
 	masterPV := &PersistentVolume{
 		AvailabilityZone:         String(az),
-		Size:       Int64(int64(masterVolumeSize)),
-		VolumeType: String(masterVolumeType),
+		Size:       Int64(int64(k.MasterVolumeSize)),
+		VolumeType: String(k.MasterVolumeType),
 		Name:    String(clusterID + "-master-pd"),
 	}
 	c.Add(masterPV)
@@ -508,7 +462,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	//renderItems(context, masterPVResources...)
 	//
 	//k.MasterVolume = target.ReadVar(masterPV)
-
 
 	iamMasterRole := &IAMRole{
 		Name:               String("kubernetes-master"),
@@ -601,7 +554,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 
 	// HTTPS to the master is allowed (for API access)
 	c.Add(masterSG.AllowTCP("0.0.0.0/0", 443, 443))
-	
+
 	masterUserData := &MasterScript{
 		Config: k,
 	}
@@ -629,13 +582,13 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	masterInstance := &Instance{
 		Name: String(clusterID + "-master"),
 		Subnet:              subnet,
-		PrivateIPAddress:    String(masterInternalIP),
+		PrivateIPAddress:    String(k.MasterInternalIP),
 		InstanceCommonConfig: InstanceCommonConfig{
 			SSHKey:              sshKey,
 			SecurityGroups:      []*SecurityGroup{masterSG},
 			IAMInstanceProfile:  iamMasterInstanceProfile,
 			ImageID:             String(imageID),
-			InstanceType:        String(masterInstanceType),
+			InstanceType:        String(k.MasterInstanceType),
 			AssociatePublicIP:   Bool(true),
 			BlockDeviceMappings: masterBlockDeviceMappings,
 			UserData:            masterUserData,
@@ -651,7 +604,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 			SecurityGroups:      []*SecurityGroup{nodeSG},
 			IAMInstanceProfile:  iamNodeInstanceProfile,
 			ImageID:             String(imageID),
-			InstanceType:        String(nodeInstanceType),
+			InstanceType:        String(k.NodeInstanceType),
 			AssociatePublicIP:   Bool(true),
 			BlockDeviceMappings: nodeBlockDeviceMappings,
 			UserData:            nodeUserData,
@@ -662,8 +615,8 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	nodeGroup := &AutoscalingGroup{
 		Name:                String(clusterID + "-minion-group"),
 		LaunchConfiguration: nodeConfiguration,
-		MinSize:             Int64(int64(nodeCount)),
-		MaxSize:             Int64(int64(nodeCount)),
+		MinSize:             Int64(int64(k.NodeCount)),
+		MaxSize:             Int64(int64(k.NodeCount)),
 		Subnet:              subnet,
 		Tags: map[string]string{
 			"Role": "node",
@@ -695,3 +648,48 @@ func findBootstrap() fi.Resource {
 	return fi.NewFileResource(path)
 }
 
+func (k *K8s) GetWellKnownServiceIP(id int) (net.IP, error) {
+	_, cidr, err := net.ParseCIDR(k.ServiceClusterIPRange)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing ServiceClusterIPRange: %v", err)
+	}
+
+	ip4 := cidr.IP.To4()
+	if ip4 != nil {
+		n := binary.BigEndian.Uint32(ip4)
+		n += uint32(id)
+		serviceIP := make(net.IP, len(ip4))
+		binary.BigEndian.PutUint32(serviceIP, n)
+		return serviceIP, nil
+	}
+
+	ip6 := cidr.IP.To16()
+	if ip6 != nil {
+		baseIPInt := big.NewInt(0)
+		baseIPInt.SetBytes(ip6)
+		serviceIPInt := big.NewInt(0)
+		serviceIPInt.Add(big.NewInt(int64(id)), baseIPInt)
+		serviceIP := make(net.IP, len(ip6))
+		serviceIPBytes := serviceIPInt.Bytes()
+		for i := range serviceIPBytes {
+			serviceIP[len(serviceIP) - len(serviceIPBytes) + i] = serviceIPBytes[i]
+		}
+		return serviceIP, nil
+	}
+
+	return nil, fmt.Errorf("Unexpected IP address type for ServiceClusterIPRange: %s", k.ServiceClusterIPRange)
+
+}
+
+func ResourceAsBase64String(r fi.Resource) string {
+	if r == nil {
+		return ""
+	}
+
+	data, err := fi.ResourceAsBytes(r)
+	if err != nil {
+		glog.Fatalf("error reading resource: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(data)
+}

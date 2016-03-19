@@ -9,12 +9,14 @@ import (
 	"k8s.io/contrib/installer/pkg/tasks"
 	"k8s.io/contrib/installer/pkg/fi"
 	"k8s.io/contrib/installer/pkg/fi/filestore"
+	"k8s.io/contrib/installer/pkg/fi/ca"
 )
 
 //var templateDir = "templates"
 
 func main() {
 	k := &tasks.K8s{}
+	k.Init()
 
 	var configPath string
 	flag.StringVar(&configPath, "config", configPath, "Path to config file")
@@ -25,27 +27,28 @@ func main() {
 	var s3BucketName string
 	flag.StringVar(&s3BucketName, "s3-bucket", "", "S3 bucket for upload of artifacts")
 
-	flag.StringVar(&k.Zone, "az", "us-east-1b", "AWS availability zone")
-	flag.BoolVar(&k.EnableClusterUI, "enable-cluster-ui", true, "Enable cluster UI")
-	flag.BoolVar(&k.EnableClusterDNS, "enable-cluster-dns", true, "Enable cluster DNS")
-	flag.BoolVar(&k.EnableClusterLogging, "enable-cluster-logging", true, "Enable cluster logging")
-	flag.StringVar(&k.LoggingDestination, "logging-destination", "elasticsearch", "Default logging destination")
-	flag.StringVar(&k.EnableClusterMonitoring, "enable-cluster-monitoring", "influxdb", "Set to enable monitoring")
-	flag.BoolVar(&k.EnableNodeLogging, "enable-node-logging", true, "Enable node logging")
-	flag.IntVar(&k.ElasticsearchLoggingReplicas, "elasticsearch-logging-replicas", 1, "Replicas to create for elasticsearch cluster")
 	flag.StringVar(&k.ClusterID, "cluster-id", "", "cluster id")
 
-	flag.IntVar(&k.DNSReplicas, "dns-replicas", 1, "Number of replicas for DNS")
-	flag.StringVar(&k.DNSServerIP, "dns-server-ip", "10.0.0.10", "Service IP for DNS")
-	//flag.StringVar(&k.DNSDomain, "dns-domain", "cluster.local", "Domain for internal service DNS")
+	flag.StringVar(&k.Zone, "az", k.Zone, "AWS availability zone")
+	flag.BoolVar(&k.EnableClusterUI, "enable-cluster-ui", k.EnableClusterUI, "Enable cluster UI")
+	flag.BoolVar(&k.EnableClusterDNS, "enable-cluster-dns", k.EnableClusterDNS, "Enable cluster DNS")
+	flag.BoolVar(&k.EnableClusterLogging, "enable-cluster-logging", k.EnableClusterLogging, "Enable cluster logging")
+	flag.StringVar(&k.LoggingDestination, "logging-destination", k.LoggingDestination, "Default logging destination")
+	flag.StringVar(&k.EnableClusterMonitoring, "enable-cluster-monitoring", k.EnableClusterMonitoring, "Set to enable monitoring")
+	flag.BoolVar(&k.EnableNodeLogging, "enable-node-logging", k.EnableNodeLogging, "Enable node logging")
+	flag.IntVar(&k.ElasticsearchLoggingReplicas, "elasticsearch-logging-replicas", k.ElasticsearchLoggingReplicas, "Replicas to create for elasticsearch cluster")
 
-	flag.StringVar(&k.AdmissionControl, "admission-control", "NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota", "Admission control policies")
+	flag.IntVar(&k.DNSReplicas, "dns-replicas", k.DNSReplicas, "Number of replicas for DNS")
+	flag.StringVar(&k.DNSServerIP, "dns-server-ip", k.DNSServerIP, "Service IP for DNS")
+	flag.StringVar(&k.DNSDomain, "dns-domain", k.DNSDomain, "Domain for internal service DNS")
 
-	flag.StringVar(&k.ServiceClusterIPRange, "service-cluster-ip-range", "10.0.0.0/16", "IP range to assign to services")
-	flag.StringVar(&k.ClusterIPRange, "cluster-ip-range", "10.244.0.0/16", "IP range for in-cluster (pod) IPs")
-	flag.StringVar(&k.MasterCIDR, "master-ip-range", "10.246.0.0/24", "IP range for master in-cluster (pod) IPs")
+	flag.StringVar(&k.AdmissionControl, "admission-control", k.AdmissionControl, "Admission control policies")
 
-	flag.StringVar(&k.DockerStorage, "docker-storage", "aufs", "Filesystem to use for docker storage")
+	flag.StringVar(&k.ServiceClusterIPRange, "service-cluster-ip-range", k.ServiceClusterIPRange, "IP range to assign to services")
+	flag.StringVar(&k.ClusterIPRange, "cluster-ip-range", k.ClusterIPRange, "IP range for in-cluster (pod) IPs")
+	flag.StringVar(&k.MasterCIDR, "master-ip-range", k.MasterIPRange, "IP range for master in-cluster (pod) IPs")
+
+	flag.StringVar(&k.DockerStorage, "docker-storage", k.DockerStorage, "Filesystem to use for docker storage")
 
 	flag.Set("alsologtostderr", "true")
 
@@ -57,7 +60,6 @@ func main() {
 	k.AllocateNodeCIDRs = true
 
 	// Simplifications
-	k.DNSDomain = "cluster.local"
 	instancePrefix := k.ClusterID
 	k.InstancePrefix = instancePrefix
 
@@ -112,7 +114,10 @@ func main() {
 	}
 	s3Prefix := "devel/" + k.ClusterID + "/"
 	filestore := filestore.NewS3FileStore(s3Bucket, s3Prefix)
-
+	castore, err := ca.NewCAStore("pki")
+	if err != nil {
+		glog.Exitf("error building CA store: %v", err)
+	}
 	target := tasks.NewBashTarget(cloud, filestore)
 
 	// TODO: Rationalize configs
@@ -125,7 +130,7 @@ func main() {
 		//}
 	}
 
-	context, err := fi.NewContext(config, cloud)
+	context, err := fi.NewContext(config, cloud, castore)
 	if err != nil {
 		glog.Fatalf("error building config: %v", err)
 	}

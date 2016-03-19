@@ -125,13 +125,17 @@ func (b*S3Bucket) FindObjectIfExists(key string) (*S3Object, error) {
 }
 
 func (b*S3Bucket) PublicURL() (string) {
+	var regionURL string
+
 	if b.region == "us-east-1" {
-		return "https://s3.amazonaws.com/"
+		regionURL = "https://s3.amazonaws.com/"
 	} else if b.region == "cn-north-1" {
-		return "https://s3.cn-north-1.amazonaws.com.cn/"
+		regionURL = "https://s3.cn-north-1.amazonaws.com.cn/"
 	} else {
-		return "https://s3-" + b.region + ".amazonaws.com/"
+		regionURL = "https://s3-" + b.region + ".amazonaws.com/"
 	}
+
+	return regionURL + b.Name + "/"
 }
 
 func (b*S3Bucket) PutObject(key string, body io.ReadSeeker) (*S3Object, error) {

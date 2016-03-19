@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi/ca"
 )
 
 type Context struct {
@@ -14,6 +15,7 @@ type Context struct {
 
 	os        *OS
 	cloud     Cloud
+	castore   ca.CAStore
 	config    Config
 	resources *ResourcesList
 
@@ -34,11 +36,12 @@ type Context struct {
 //}
 
 
-func NewContext(config Config, cloud Cloud) (*Context, error) {
+func NewContext(config Config, cloud Cloud, castore ca.CAStore) (*Context, error) {
 	c := &Context{
 		state:     make(map[string]interface{}),
 		os:        &OS{},
 		cloud:     cloud,
+		castore: castore,
 		resources: &ResourcesList{},
 		config:    config,
 	}
@@ -90,6 +93,10 @@ func (c *Context) OS() *OS {
 
 func (c *Context) Cloud() Cloud {
 	return c.cloud
+}
+
+func (c *Context) CAStore() ca.CAStore {
+	return c.castore
 }
 
 func (c *Context) GetState(key string, builder func() (interface{}, error)) (interface{}, error) {
