@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
-"io"
-"strings"
+	"io"
+	"strings"
 )
 
 type ScriptWriter struct {
@@ -39,6 +39,12 @@ func (sw *ScriptWriter) WriteTo(w io.Writer) error {
 	_, err := sw.buffer.WriteTo(w)
 	return err
 }
+
+func (sw *ScriptWriter) AsString() string {
+	return sw.buffer.String()
+}
+
+
 
 //func (s *ScriptWriter) CopyTemplate(key string, replacements map[string]string) {
 //	templatePath := path.Join(templateDir, key)

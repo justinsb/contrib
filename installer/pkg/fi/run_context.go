@@ -18,7 +18,7 @@ type RunContext struct {
 	node   *node
 	mode   RunMode
 
-	dirty bool
+	dirty  bool
 }
 
 func (c *RunContext) MarkDirty() {
@@ -39,6 +39,7 @@ func (c *RunContext) IsValidate() bool {
 func (c *RunContext) buildChildContext(n *node) *RunContext {
 	child := &RunContext{
 		Context: c.Context,
+		Target: c.Target,
 		parent:  c,
 		node:    n,
 		mode:    c.mode,

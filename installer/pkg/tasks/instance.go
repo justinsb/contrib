@@ -135,7 +135,7 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		}
 
 		if e.UserData != nil {
-			d, err := ResourceAsString(e.UserData)
+			d, err := fi.ResourceAsString(e.UserData)
 			if err != nil {
 				return fmt.Errorf("error rendering Instance UserData: %v", err)
 			}

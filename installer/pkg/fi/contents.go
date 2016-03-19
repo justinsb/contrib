@@ -51,6 +51,14 @@ func (r *FileSystemResource) WriteTo(out io.Writer) error {
 	return nil
 }
 
+func (r *FileSystemResource) Open() (io.ReadSeeker, error) {
+	in, err := r.open()
+	if err != nil {
+		return nil, err
+	}
+	return in, nil
+}
+
 func (r *FileSystemResource) SameContents(path string) (bool, error) {
 	in, err := r.open()
 	if err != nil {

@@ -198,6 +198,12 @@ func (c *Context) initializeNode(unit Unit) {
 				}
 			}
 
+		case reflect.Interface:
+		case reflect.Slice:
+		case reflect.Ptr:
+		case reflect.Map:
+			glog.Warningf("Ignoring field type: %v in %v::%v", fieldType.Kind(), unitType, field.Name)
+
 		default:
 			panic(fmt.Sprintf("Unhandled field type: %v in %v::%v", fieldType.Kind(), unitType, field.Name))
 		}

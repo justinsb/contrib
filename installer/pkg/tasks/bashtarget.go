@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -13,13 +12,14 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
 	"reflect"
+	"k8s.io/contrib/installer/pkg/fi/filestore"
 )
 
 type BashTarget struct {
 	// TODO: Remove cloud
 	cloud                *fi.AWSCloud
+	filestore            filestore.FileStore
 	commands             []*BashCommand
-
 	ec2Args              []string
 	autoscalingArgs      []string
 	iamArgs              []string
@@ -28,8 +28,10 @@ type BashTarget struct {
 	resourcePrefixCounts map[string]int
 }
 
-func NewBashTarget(cloud *fi.AWSCloud) *BashTarget {
-	b := &BashTarget{cloud: cloud}
+var _ fi.Target = &BashTarget{}
+
+func NewBashTarget(cloud *fi.AWSCloud, filestore filestore.FileStore) *BashTarget {
+	b := &BashTarget{cloud: cloud, filestore: filestore}
 	b.ec2Args = []string{"aws", "ec2"}
 	b.autoscalingArgs = []string{"aws", "autoscaling"}
 	b.iamArgs = []string{"aws", "iam"}
@@ -59,7 +61,7 @@ func (t *BashTarget) CreateVar(v fi.Unit) *BashVar {
 	key := getKey(v)
 	bv, found := t.vars[key]
 	if found {
-		glog.Fatal("Attempt to create variable twice for ", v)
+		glog.Fatalf("Attempt to create variable twice for %q: %v", key, v)
 	}
 	bv = &BashVar{}
 	prefix := getVariablePrefix(v)
@@ -288,34 +290,39 @@ func (t *BashTarget) generateDynamicPath(prefix string) string {
 	return p
 }
 
-func (t *BashTarget) AddResource(resource Resource) (string, error) {
-	dynamicResource, ok := resource.(DynamicResource)
-	if ok {
-		path := t.generateDynamicPath(dynamicResource.Prefix())
-		f, err := os.Create(path)
-		if err != nil {
-			return "", err
-		}
-		defer func() {
-			err := f.Close()
-			if err != nil {
-				glog.Warning("Error closing resource file", err)
-			}
-		}()
-
-		err = dynamicResource.WriteTo(f)
-		if err != nil {
-			return "", fmt.Errorf("error writing resource: %v", err)
-		}
-
-		return path, nil
-	}
+func (t *BashTarget) AddLocalResource(resource fi.Resource) (string, error) {
+	//dynamicResource, ok := resource.(fi.DynamicResource)
+	//if ok {
+	//	path := t.generateDynamicPath(dynamicResource.Prefix())
+	//	f, err := os.Create(path)
+	//	if err != nil {
+	//		return "", err
+	//	}
+	//	defer func() {
+	//		err := f.Close()
+	//		if err != nil {
+	//			glog.Warning("Error closing resource file", err)
+	//		}
+	//	}()
+	//
+	//	err = dynamicResource.WriteTo(f)
+	//	if err != nil {
+	//		return "", fmt.Errorf("error writing resource: %v", err)
+	//	}
+	//
+	//	return path, nil
+	//}
 
 	switch r := resource.(type) {
-	case *FileResource:
+	case *fi.FileResource:
 		return r.Path, nil
 	default:
 		log.Fatal("unknown resource type: ", r)
 		return "", fmt.Errorf("unknown resource type: %v", r)
 	}
 }
+
+func (t *BashTarget) PutResource(key string, r fi.Resource) (string, string, error) {
+	return t.filestore.PutResource(key, r)
+}
+

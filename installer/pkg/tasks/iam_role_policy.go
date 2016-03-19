@@ -19,7 +19,7 @@ type IAMRolePolicy struct {
 	ID             *string
 	Name           *string
 	Role           *IAMRole
-	PolicyDocument Resource
+	PolicyDocument fi.Resource
 }
 
 func (s *IAMRolePolicy) Prefix() string {
@@ -47,7 +47,7 @@ func (e *IAMRolePolicy) find(c *fi.RunContext) (*IAMRolePolicy, error) {
 	actual := &IAMRolePolicy{}
 	actual.Role = &IAMRole{Name: p.RoleName}
 	if p.PolicyDocument != nil {
-		actual.PolicyDocument = NewStringResource(*p.PolicyDocument)
+		actual.PolicyDocument = fi.NewStringResource(*p.PolicyDocument)
 	}
 	actual.Name = p.PolicyName
 	return actual, nil
@@ -87,7 +87,7 @@ func (t *AWSAPITarget) RenderIAMRolePolicy(a, e, changes *IAMRolePolicy) error {
 	if a == nil {
 		glog.V(2).Infof("Creating IAMRolePolicy")
 
-		policy, err := ResourceAsString(e.PolicyDocument)
+		policy, err := fi.ResourceAsString(e.PolicyDocument)
 		if err != nil {
 			return fmt.Errorf("error rendering PolicyDocument: %v", err)
 		}
@@ -111,7 +111,7 @@ func (t *BashTarget) RenderIAMRolePolicy(a, e, changes *IAMRolePolicy) error {
 	if a == nil {
 		glog.V(2).Infof("Creating IAMRolePolicy with Name:%q", *e.Name)
 
-		rolePolicyDocument, err := t.AddResource(e.PolicyDocument)
+		rolePolicyDocument, err := t.AddLocalResource(e.PolicyDocument)
 		if err != nil {
 			return err
 		}

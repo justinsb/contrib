@@ -69,7 +69,7 @@ func (e *AutoscalingLaunchConfiguration) find(c *fi.RunContext) (*AutoscalingLau
 	for _, b := range i.BlockDeviceMappings {
 		actual.BlockDeviceMappings = append(actual.BlockDeviceMappings, BlockDeviceMappingFromAutoscaling(b))
 	}
-	actual.UserData = NewStringResource(*i.UserData)
+	actual.UserData = fi.NewStringResource(*i.UserData)
 	actual.IAMInstanceProfile = &IAMInstanceProfile{ID: i.IamInstanceProfile }
 	actual.AssociatePublicIP = i.AssociatePublicIpAddress
 
@@ -132,7 +132,7 @@ func (t *AWSAPITarget) RenderAutoscalingLaunchConfiguration(a, e, changes *Autos
 
 
 		if e.UserData != nil {
-			d, err := ResourceAsString(e.UserData)
+			d, err := fi.ResourceAsString(e.UserData)
 			if err != nil {
 				return fmt.Errorf("error rendering AutoScalingLaunchConfiguration UserData: %v", err)
 			}

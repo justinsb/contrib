@@ -8,15 +8,15 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"fmt"
-"github.com/golang/glog"
+	"github.com/golang/glog"
+	fi_s3 "k8s.io/contrib/installer/pkg/fi/aws/s3"
 )
 
 type AWSCloud struct {
 	Cloud
 
 	EC2         *ec2.EC2
-	//S3          *s3.S3
-	s3          map[string]*s3.S3
+	S3          *fi_s3.S3Helper
 	IAM         *iam.IAM
 	Autoscaling *autoscaling.AutoScaling
 
@@ -48,8 +48,7 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 
 	config := aws.NewConfig().WithRegion(region)
 	c.EC2 = ec2.New(session.New(), config)
-	//c.S3 = s3.New(session.New(), config)
-	c.s3 = make(map[string]*s3.S3)
+	c.S3 = fi_s3.NewS3Helper(config)
 	c.IAM = iam.New(session.New(), config)
 	c.Autoscaling = autoscaling.New(session.New(), config)
 
@@ -58,13 +57,7 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 }
 
 func (c*AWSCloud) GetS3(region string) *s3.S3 {
-	client, found := c.s3[region]
-	if !found {
-		config := aws.NewConfig().WithRegion(region)
-		client = s3.New(session.New(), config)
-		c.s3[region] = client
-	}
-	return client
+	return c.S3.GetS3(region)
 }
 
 func NewEC2Filter(name string, values ...string) *ec2.Filter {

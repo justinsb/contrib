@@ -18,7 +18,7 @@ type IAMRole struct {
 
 	ID                 *string
 	Name               *string
-	RolePolicyDocument Resource // "inline" policy
+	RolePolicyDocument fi.Resource // "inline" IAM policy
 }
 
 func (s *IAMRole) Prefix() string {
@@ -81,7 +81,7 @@ func (t *AWSAPITarget) RenderIAMRole(a, e, changes *IAMRole) error {
 	if a == nil {
 		glog.V(2).Infof("Creating IAMRole with Name:%q", *e.Name)
 
-		policy, err := ResourceAsString(e.RolePolicyDocument)
+		policy, err := fi.ResourceAsString(e.RolePolicyDocument)
 		if err != nil {
 			return fmt.Errorf("error rendering PolicyDocument: %v", err)
 		}
@@ -106,7 +106,7 @@ func (t *BashTarget) RenderIAMRole(a, e, changes *IAMRole) error {
 	if a == nil {
 		glog.V(2).Infof("Creating IAMRole with Name:%q", *e.Name)
 
-		rolePolicyDocument, err := t.AddResource(e.RolePolicyDocument)
+		rolePolicyDocument, err := t.AddLocalResource(e.RolePolicyDocument)
 		if err != nil {
 			return err
 		}

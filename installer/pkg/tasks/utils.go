@@ -106,7 +106,6 @@ func RandomToken(length int) string {
 	}
 }
 
-var templateDir = "templates"
 
 func String(s string) *string {
 	return &s

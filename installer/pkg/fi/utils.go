@@ -6,11 +6,12 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"github.com/golang/glog"
 )
 
 func ReadersEqual(l, r io.Reader) (bool, error) {
-	lBuf := make([]byte, 32*1024)
-	rBuf := make([]byte, 32*1024)
+	lBuf := make([]byte, 32 * 1024)
+	rBuf := make([]byte, 32 * 1024)
 
 	for {
 		nL, err := io.ReadFull(l, lBuf)
@@ -56,4 +57,18 @@ func HasContents(path string, contents []byte) (bool, error) {
 	}
 
 	return bytes.Equal(inContents, contents), nil
+}
+
+func SafeClose(r io.Reader) {
+	if r == nil {
+		return
+	}
+	closer, ok := r.(io.Closer)
+	if !ok {
+		return
+	}
+	err := closer.Close()
+	if err != nil {
+		glog.Warningf("unexpected error closing stream: %v", err)
+	}
 }

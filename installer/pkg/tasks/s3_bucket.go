@@ -3,10 +3,11 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
+	fi_s3 "k8s.io/contrib/installer/pkg/fi/aws/s3"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 type S3Bucket struct {
@@ -27,50 +28,25 @@ func (s *S3Bucket) Prefix() string {
 	return "S3Bucket"
 }
 
-func (e*S3Bucket) findRegionIfExists(c *fi.RunContext) (string, bool, error) {
+func (e*S3Bucket) findBucketIfExists(c *fi.RunContext) (*fi_s3.S3Bucket, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	request := &s3.GetBucketLocationInput{
-		Bucket: e.Name,
-	}
-
-	response, err := cloud.GetS3(cloud.Region).GetBucketLocation(request)
-	if err != nil {
-		if awsError, ok := err.(awserr.Error); ok {
-			if awsError.Code() == "NoSuchBucket" {
-				return "", false, nil
-			}
-		}
-		return "", false, fmt.Errorf("error getting bucket location: %v", err)
-	}
-
-	var region string
-	if response.LocationConstraint == nil {
-		// US Classic does not return a region
-		region = "us-east-1"
-	} else {
-		region = *response.LocationConstraint
-		// Another special case: "EU" can mean eu-west-1
-		if region == "EU" {
-			region = "eu-west-1"
-		}
-	}
-	return region, true, nil
+	return cloud.S3.FindBucketIfExists(*e.Name)
 }
 
 func (e *S3Bucket) find(c *fi.RunContext) (*S3Bucket, error) {
-	region, exists, err := e.findRegionIfExists(c)
+	bucket, err := e.findBucketIfExists(c)
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
+	if bucket == nil {
 		return nil, nil
 	}
 
 	glog.V(2).Info("found existing S3 bucket")
 	actual := &S3Bucket{}
 	actual.Name = e.Name
-	actual.Region = &region
+	actual.Region = aws.String(bucket.Region())
 	return actual, nil
 }
 

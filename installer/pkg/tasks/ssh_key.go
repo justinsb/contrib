@@ -17,7 +17,7 @@ type SSHKey struct {
 	fi.SimpleUnit
 
 	Name        *string
-	PublicKey   Resource
+	PublicKey   fi.Resource
 
 	fingerprint *string
 }
@@ -105,7 +105,7 @@ func (t *AWSAPITarget) RenderSSHKey(a, e, changes *SSHKey) error {
 		request := &ec2.ImportKeyPairInput{}
 		request.KeyName = e.Name
 		if e.PublicKey != nil {
-			d, err := ResourceAsBytes(e.PublicKey)
+			d, err := fi.ResourceAsBytes(e.PublicKey)
 			if err != nil {
 				return fmt.Errorf("error rendering SSHKey PublicKey: %v", err)
 			}
@@ -127,7 +127,7 @@ func (t *BashTarget) RenderSSHKey(a, e, changes *SSHKey) error {
 	if a == nil {
 		glog.V(2).Infof("Creating SSHKey with Name:%q", *e.Name)
 
-		file, err := t.AddResource(e.PublicKey)
+		file, err := t.AddLocalResource(e.PublicKey)
 		if err != nil {
 			return err
 		}

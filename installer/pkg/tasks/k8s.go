@@ -9,7 +9,7 @@ import (
 )
 
 type K8s struct {
-	fi.StructuralUnit
+	fi.SimpleUnit
 
 	S3Region                      string
 	S3BucketName                  string
@@ -39,15 +39,15 @@ type K8s struct {
 	MasterIPRange                 string
 	AllocateNodeCIDRs             bool
 
-	ServerBinaryTar               Resource
-	SaltTar                       Resource
-	BootstrapScript               Resource
+	ServerBinaryTar               fi.Resource
+	SaltTar                       fi.Resource
+	BootstrapScript               fi.Resource
 
 	Zone                          string
 	KubeUser                      string
 	KubePassword                  string
 
-	SaltMaster                    string
+	//SaltMaster                    string
 	MasterName                    string
 
 	ServiceClusterIPRange         string
@@ -159,18 +159,18 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	y["CLUSTER_IP_RANGE"] = k.ClusterIPRange
 
 	{
-		url, hash, err := c.UploadResource(k.ServerBinaryTar)
+		url, hash, err := c.Target.PutResource("server", k.ServerBinaryTar)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		y["SERVER_BINARY_TAR_URL"] = url
 		y["SERVER_BINARY_TAR_HASH"] = hash
 	}
 
 	{
-		url, hash, err := c.UploadResource(k.SaltTar)
+		url, hash, err := c.Target.PutResource("salt", k.SaltTar)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		y["SALT_TAR_URL"] = url
 		y["SALT_TAR_HASH"] = hash
@@ -380,7 +380,7 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 		//: $(yaml-quote ${KUBERNETES_CONFIGURE_CBR0:-true})
 	}
 
-	return y
+	return y, nil
 }
 
 func (k *K8s) Add(c *fi.BuildContext) {
@@ -388,6 +388,8 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	if clusterID == "" {
 		glog.Exit("cluster-id is required")
 	}
+
+	k.BootstrapScript = staticResource("aws/bootstrap-script")
 
 	masterInstanceType := k.MasterInstanceType
 	if masterInstanceType == "" {
@@ -490,25 +492,27 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		VolumeType: String(masterVolumeType),
 		Name:    String(clusterID + "-master-pd"),
 	}
+	c.Add(masterPV)
 
-	glog.Info("Processing master volume resource")
-	masterPVResources := []fi.Unit{
-		masterPV,
-	}
-	renderItems(context, masterPVResources...)
+	//glog.Info("Processing master volume resource")
+	//masterPVResources := []fi.Unit{
+	//	masterPV,
+	//}
+	//renderItems(context, masterPVResources...)
+	//
+	//k.MasterVolume = target.ReadVar(masterPV)
 
-	k.MasterVolume = target.ReadVar(masterPV)
 
 	iamMasterRole := &IAMRole{
 		Name:               String("kubernetes-master"),
-		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-role.json"),
+		RolePolicyDocument: staticResource("aws/iam/kubernetes-master-role.json"),
 	}
 	c.Add(iamMasterRole)
 
 	iamMasterRolePolicy := &IAMRolePolicy{
 		Role:           iamMasterRole,
 		Name:           String("kubernetes-master"),
-		PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-master-policy.json"),
+		PolicyDocument: staticResource("aws/iam/kubernetes-master-policy.json"),
 	}
 	c.Add(iamMasterRolePolicy)
 
@@ -525,14 +529,14 @@ func (k *K8s) Add(c *fi.BuildContext) {
 
 	iamNodeRole := &IAMRole{
 		Name:             String("kubernetes-minion"),
-		RolePolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-role.json"),
+		RolePolicyDocument: staticResource("aws/iam/kubernetes-minion-role.json"),
 	}
 	c.Add(iamNodeRole)
 
 	iamNodeRolePolicy := &IAMRolePolicy{
 		Role:           iamNodeRole,
 		Name:          String("kubernetes-minion"),
-		PolicyDocument: staticResource("cluster/aws/templates/iam/kubernetes-minion-policy.json"),
+		PolicyDocument: staticResource("aws/iam/kubernetes-minion-policy.json"),
 	}
 	c.Add(iamNodeRolePolicy)
 
@@ -547,7 +551,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(iamNodeInstanceProfileRole)
 
-	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: &FileResource{Path: "~/.ssh/justin2015.pub"}}
+	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: fi.NewFileResource("~/.ssh/id_rsa.pub")}
 	c.Add(sshKey)
 
 	vpc := &VPC{CIDR:String("172.20.0.0/16")}
@@ -659,25 +663,25 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	c.Add(masterSG.AllowTCP("0.0.0.0/0", 443, 443))
 }
 
-func staticResource(key string) Resource {
-	p := path.Join(basePath, key)
-	return &FileResource{Path: p}
+func staticResource(key string) fi.Resource {
+	p := path.Join("_resources", key)
+	return fi.NewFileResource(p)
 }
 
-func findKubernetesTarGz() Resource {
+func findKubernetesTarGz() fi.Resource {
 	// TODO: Bash script has a fallback procedure
 	path := "_output/release-tars/kubernetes-server-linux-amd64.tar.gz"
-	return &FileResource{Path: path}
+	return fi.NewFileResource(path)
 }
 
-func findSaltTarGz() Resource {
+func findSaltTarGz() fi.Resource {
 	// TODO: Bash script has a fallback procedure
 	path := "_output/release-tars/kubernetes-salt.tar.gz"
-	return &FileResource{Path: path}
+	return fi.NewFileResource(path)
 }
 
-func findBootstrap() Resource {
+func findBootstrap() fi.Resource {
 	path := "bin/bootstrap"
-	return &FileResource{Path: path}
+	return fi.NewFileResource(path)
 }
 

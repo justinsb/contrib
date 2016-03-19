@@ -2,51 +2,50 @@ package main
 
 import (
 	"flag"
-	"log"
 	"net"
 	"os"
-	"path"
 
 	"github.com/golang/glog"
-	"k8s.io/contrib/installer/pkg/config"
 	"k8s.io/contrib/installer/pkg/tasks"
-	"strconv"
 	"k8s.io/contrib/installer/pkg/fi"
+	"k8s.io/contrib/installer/pkg/fi/filestore"
 )
 
-var basePath string
-
+//var templateDir = "templates"
 
 func main() {
-	var config config.Configuration
-
-
-	basePath = "/Users/justinsb/k8s/src/github.com/GoogleCloudPlatform/kubernetes/"
+	k := &tasks.K8s{}
 
 	var configPath string
 	flag.StringVar(&configPath, "config", configPath, "Path to config file")
 
-	flag.StringVar(&config.Zone, "az", "us-east-1b", "AWS availability zone")
+	var s3Region string
 	flag.StringVar(&s3Region, "s3-region", "", "Region in which to create the S3 bucket (if it does not exist)")
-	flag.BoolVar(&config.EnableClusterUI, "enable-cluster-ui", true, "Enable cluster UI")
-	flag.BoolVar(&config.EnableClusterDNS, "enable-cluster-dns", true, "Enable cluster DNS")
-	flag.BoolVar(&config.EnableClusterLogging, "enable-cluster-logging", true, "Enable cluster logging")
-	flag.StringVar(&config.LoggingDestination, "logging-destination", "elasticsearch", "Default logging destination")
-	flag.StringVar(&config.EnableClusterMonitoring, "enable-cluster-monitoring", "influxdb", "Set to enable monitoring")
-	flag.BoolVar(&config.EnableNodeLogging, "enable-node-logging", true, "Enable node logging")
-	flag.IntVar(&config.ElasticsearchLoggingReplicas, "elasticsearch-logging-replicas", 1, "Replicas to create for elasticsearch cluster")
 
-	flag.IntVar(&config.DNSReplicas, "dns-replicas", 1, "Number of replicas for DNS")
-	flag.StringVar(&config.DNSServerIP, "dns-server-ip", "10.0.0.10", "Service IP for DNS")
-	//flag.StringVar(&config.DNSDomain, "dns-domain", "cluster.local", "Domain for internal service DNS")
+	var s3BucketName string
+	flag.StringVar(&s3BucketName, "s3-bucket", "", "S3 bucket for upload of artifacts")
 
-	flag.StringVar(&config.AdmissionControl, "admission-control", "NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota", "Admission control policies")
+	flag.StringVar(&k.Zone, "az", "us-east-1b", "AWS availability zone")
+	flag.BoolVar(&k.EnableClusterUI, "enable-cluster-ui", true, "Enable cluster UI")
+	flag.BoolVar(&k.EnableClusterDNS, "enable-cluster-dns", true, "Enable cluster DNS")
+	flag.BoolVar(&k.EnableClusterLogging, "enable-cluster-logging", true, "Enable cluster logging")
+	flag.StringVar(&k.LoggingDestination, "logging-destination", "elasticsearch", "Default logging destination")
+	flag.StringVar(&k.EnableClusterMonitoring, "enable-cluster-monitoring", "influxdb", "Set to enable monitoring")
+	flag.BoolVar(&k.EnableNodeLogging, "enable-node-logging", true, "Enable node logging")
+	flag.IntVar(&k.ElasticsearchLoggingReplicas, "elasticsearch-logging-replicas", 1, "Replicas to create for elasticsearch cluster")
+	flag.StringVar(&k.ClusterID, "cluster-id", "", "cluster id")
 
-	flag.StringVar(&config.ServiceClusterIPRange, "service-cluster-ip-range", "10.0.0.0/16", "IP range to assign to services")
-	flag.StringVar(&config.ClusterIPRange, "cluster-ip-range", "10.244.0.0/16", "IP range for in-cluster (pod) IPs")
-	flag.StringVar(&config.MasterCIDR, "master-ip-range", "10.246.0.0/24", "IP range for master in-cluster (pod) IPs")
+	flag.IntVar(&k.DNSReplicas, "dns-replicas", 1, "Number of replicas for DNS")
+	flag.StringVar(&k.DNSServerIP, "dns-server-ip", "10.0.0.10", "Service IP for DNS")
+	//flag.StringVar(&k.DNSDomain, "dns-domain", "cluster.local", "Domain for internal service DNS")
 
-	flag.StringVar(&config.DockerStorage, "docker-storage", "aufs", "Filesystem to use for docker storage")
+	flag.StringVar(&k.AdmissionControl, "admission-control", "NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota", "Admission control policies")
+
+	flag.StringVar(&k.ServiceClusterIPRange, "service-cluster-ip-range", "10.0.0.0/16", "IP range to assign to services")
+	flag.StringVar(&k.ClusterIPRange, "cluster-ip-range", "10.244.0.0/16", "IP range for in-cluster (pod) IPs")
+	flag.StringVar(&k.MasterCIDR, "master-ip-range", "10.246.0.0/24", "IP range for master in-cluster (pod) IPs")
+
+	flag.StringVar(&k.DockerStorage, "docker-storage", "aufs", "Filesystem to use for docker storage")
 
 	flag.Set("alsologtostderr", "true")
 
@@ -54,31 +53,27 @@ func main() {
 
 
 
-
-
 	// Required to work with autoscaling minions
-	config.AllocateNodeCIDRs = true
+	k.AllocateNodeCIDRs = true
 
 	// Simplifications
-	config.DNSDomain = "cluster.local"
-	instancePrefix := config.ClusterID
-	config.InstancePrefix = instancePrefix
+	k.DNSDomain = "cluster.local"
+	instancePrefix := k.ClusterID
+	k.InstancePrefix = instancePrefix
 
-	config.SaltMaster = masterInternalIP
-	config.MasterInternalIP = masterInternalIP
 	nodeInstancePrefix := instancePrefix + "-minion"
-	config.NodeInstancePrefix = nodeInstancePrefix
-	config.MasterName = instancePrefix + "-master"
+	k.NodeInstancePrefix = nodeInstancePrefix
+	k.MasterName = instancePrefix + "-master"
 
-	config.CloudProvider = "aws"
+	k.CloudProvider = "aws"
 
-	config.KubeUser = "admin"
-	config.KubePassword = tasks.RandomToken(16)
+	k.KubeUser = "admin"
+	k.KubePassword = tasks.RandomToken(16)
 
-	config.KubeletToken = tasks.RandomToken(32)
-	config.KubeProxyToken = tasks.RandomToken(32)
+	k.KubeletToken = tasks.RandomToken(32)
+	k.KubeProxyToken = tasks.RandomToken(32)
 
-	serviceIP, _, err := net.ParseCIDR(config.ServiceClusterIPRange)
+	serviceIP, _, err := net.ParseCIDR(k.ServiceClusterIPRange)
 	if err != nil {
 		glog.Fatalf("Error parsing service-cluster-ip-range: %v", err)
 	}
@@ -89,33 +84,51 @@ func main() {
 		"DNS:kubernetes",
 		"DNS:kubernetes.default",
 		"DNS:kubernetes.default.svc",
-		"DNS:kubernetes.default.svc." + config.DNSDomain,
-		"DNS:" + config.MasterName,
+		"DNS:kubernetes.default.svc." + k.DNSDomain,
+		"DNS:" + k.MasterName,
 	}
-	config.MasterExtraSans = masterExtraSans
+	k.MasterExtraSans = masterExtraSans
 
+	az := k.Zone
+	if len(az) <= 2 {
+		glog.Exit("Invalid AZ: ", az)
+	}
+	region := az[:len(az) - 1]
+	if s3Region == "" {
+		s3Region = region
+	}
 
+	if s3BucketName == "" {
+		// TODO: Implement the generation logic
+		glog.Exit("s3-bucket is required (for now!)")
+	}
 
-	tags := map[string]string{"KubernetesCluster": clusterID}
+	tags := map[string]string{"KubernetesCluster": k.ClusterID}
 	cloud := fi.NewAWSCloud(region, tags)
 
-	target := tasks.NewBashTarget(cloud)
+	s3Bucket, err := cloud.S3.EnsureBucket(s3BucketName, s3Region)
+	if err != nil {
+		glog.Exitf("error creating s3 bucket: %v", err)
+	}
+	s3Prefix := "devel/" + k.ClusterID + "/"
+	filestore := filestore.NewS3FileStore(s3Bucket, s3Prefix)
+
+	target := tasks.NewBashTarget(cloud, filestore)
 
 	// TODO: Rationalize configs
-	fiConfig := fi.NewSimpleConfig()
+	config := fi.NewSimpleConfig()
 	if configPath != "" {
-		err := fiConfig.ReadYaml(configPath)
-		if err != nil {
-			glog.Fatalf("error reading configuration: %v", err)
-		}
+		panic("additional config not supported yet")
+		//err := fi.Config.ReadYaml(configPath)
+		//if err != nil {
+		//	glog.Fatalf("error reading configuration: %v", err)
+		//}
 	}
 
-	fiContext, err := fi.NewContext(fiConfig, cloud)
+	context, err := fi.NewContext(config, cloud)
 	if err != nil {
 		glog.Fatalf("error building config: %v", err)
 	}
-
-	context := fiContext.NewRunContext(target, fi.ModeConfigure)
 
 	/*
 	vpc := &tasks.VPC{CIDR: String("172.20.0.0/16")}
@@ -150,8 +163,19 @@ func main() {
 	renderItems(resources, context)
 */
 
-	glog.Info("Processing main resources")
-	renderItems(context, resources...)
+	bc := context.NewBuildContext()
+	bc.Add(k)
+
+	runMode := fi.ModeConfigure
+	//if validate {
+	//	runMode = fi.ModeValidate
+	//}
+
+	rc := context.NewRunContext(target, runMode)
+	err = rc.Run()
+	if err != nil {
+		glog.Fatalf("error running configuration: %v", err)
+	}
 
 	target.DebugDump()
 

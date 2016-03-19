@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
 )
@@ -20,7 +18,7 @@ type S3File struct {
 
 	Bucket    *S3Bucket
 	Key       *string
-	Source    Resource
+	Source    fi.Resource
 	Public    *bool
 
 	//rendered  bool
@@ -38,64 +36,36 @@ func (s *S3File) Prefix() string {
 }
 
 func (e *S3File) find(c *fi.RunContext) (*S3File, error) {
-	cloud := c.Cloud().(*fi.AWSCloud)
-
-	region, exists, err := e.Bucket.findRegionIfExists(c)
+	bucket, err := e.Bucket.findBucketIfExists(c)
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
+	if bucket == nil {
 		return nil, nil
 	}
 
-	request := &s3.HeadObjectInput{
-		Bucket: e.Bucket.Name,
-		Key:    e.Key,
+	o, err := bucket.FindObjectIfExists(*e.Key)
+	if err != nil {
+		return nil, err
+	}
+	if o == nil {
+		return nil, nil
 	}
 
-	response, err := cloud.GetS3(region).HeadObject(request)
+	isPublic, err := o.IsPublic()
 	if err != nil {
-		if requestFailure, ok := err.(awserr.RequestFailure); ok {
-			if requestFailure.StatusCode() == 404 {
-				glog.V(2).Infof("S3 file does not exist: s3://%s/%s", *e.Bucket.Name, e.Key)
-				return nil, nil
-			}
-		}
+		return nil, err
 	}
+	etag, err := o.Etag()
 	if err != nil {
-		return nil, fmt.Errorf("error getting S3 file metadata: %v", err)
-	}
-
-	aclRequest := &s3.GetObjectAclInput{
-		Bucket: e.Bucket.Name,
-		Key: e.Key,
-	}
-	aclResponse, err := cloud.GetS3(region).GetObjectAcl(aclRequest)
-	if err != nil {
-		return nil, fmt.Errorf("error getting S3 file ACL: %v", err)
-	}
-
-	isPublic := false
-	for _, grant := range aclResponse.Grants {
-		if grant.Grantee == nil {
-			continue
-		}
-		grantee := aws.StringValue(grant.Grantee.URI)
-		permission := aws.StringValue(grant.Permission)
-		glog.Infof("permission:%q grant:%q", permission, grantee)
-		if permission != "READ" {
-			continue
-		}
-		if grantee == "http://acs.amazonaws.com/groups/global/AllUsers" {
-			isPublic = true
-		}
+		return nil, err
 	}
 
 	actual := &S3File{}
 	actual.Public = &isPublic
 	actual.Bucket = e.Bucket
 	actual.Key = e.Key
-	actual.etag = response.ETag
+	actual.etag = &etag
 	return actual, nil
 }
 
@@ -149,7 +119,7 @@ func (t *AWSAPITarget) RenderS3File(a, e, changes *S3File) error {
 func (t *BashTarget) RenderS3File(a, e, changes *S3File) error {
 	needToUpload := true
 
-	localPath, err := t.AddResource(e.Source)
+	localPath, err := t.AddLocalResource(e.Source)
 	if err != nil {
 		return err
 	}
