@@ -85,7 +85,8 @@ type K8s struct {
 	KubecfgCert                   fi.Resource
 	KubecfgKey                    fi.Resource
 
-	KubeletApiserver              string
+	RegisterMasterKubelet         bool
+	//KubeletApiserver              string
 
 	EnableManifestURL             bool
 	ManifestURL                   string
@@ -120,7 +121,7 @@ type K8s struct {
 	TerminatedPodGcThreshold      string
 
 	KubeManifestsTarURL           string
-	KubeManifestsTarHash          string
+	KubeManifestsTarSha256        string
 
 	TestCluster                   string
 
@@ -160,15 +161,19 @@ func (k*K8s) Key() string {
 	return k.ClusterID
 }
 
-func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, error) {
-	y := map[string]interface{}{}
+func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error) {
+
+	// For now, we add everything as a string...
+	// The first problem is that the python parser converts true / false to "True" and "False",
+	// which breaks string-based comparisons (as done in bash)
+	y := map[string]string{}
 	y["ENV_TIMESTAMP"] = time.Now().UTC().Format("2006-01-02T03:04:05+0000")
 	y["INSTANCE_PREFIX"] = k.InstancePrefix
 	y["NODE_INSTANCE_PREFIX"] = k.NodeInstancePrefix
 	y["CLUSTER_IP_RANGE"] = k.ClusterIPRange
 
 	{
-		url, hash, err := c.Target.PutResource("server", k.ServerBinaryTar)
+		url, hash, err := c.Target.PutResource("server", k.ServerBinaryTar, fi.HashAlgorithmSHA1)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +182,7 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	}
 
 	{
-		url, hash, err := c.Target.PutResource("salt", k.SaltTar)
+		url, hash, err := c.Target.PutResource("salt", k.SaltTar, fi.HashAlgorithmSHA1)
 		if err != nil {
 			return nil, err
 		}
@@ -189,20 +194,20 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 
 	y["KUBERNETES_MASTER_NAME"] = k.MasterName
 
-	y["ALLOCATE_NODE_CIDRS"] = k.AllocateNodeCIDRs
+	y["ALLOCATE_NODE_CIDRS"] = strconv.FormatBool(k.AllocateNodeCIDRs)
 
 	y["ENABLE_CLUSTER_MONITORING"] = k.EnableClusterMonitoring
 	y["ENABLE_L7_LOADBALANCING"] = k.EnableL7LoadBalancing
-	y["ENABLE_CLUSTER_LOGGING"] = k.EnableClusterLogging
-	y["ENABLE_CLUSTER_UI"] = k.EnableClusterUI
-	y["ENABLE_NODE_LOGGING"] = k.EnableNodeLogging
+	y["ENABLE_CLUSTER_LOGGING"] = strconv.FormatBool(k.EnableClusterLogging)
+	y["ENABLE_CLUSTER_UI"] = strconv.FormatBool(k.EnableClusterUI)
+	y["ENABLE_NODE_LOGGING"] = strconv.FormatBool(k.EnableNodeLogging)
 	y["LOGGING_DESTINATION"] = k.LoggingDestination
-	y["ELASTICSEARCH_LOGGING_REPLICAS"] = k.ElasticsearchLoggingReplicas
-	y["ENABLE_CLUSTER_DNS"] = k.EnableClusterDNS
-	y["ENABLE_CLUSTER_REGISTRY"] = k.EnableClusterRegistry
+	y["ELASTICSEARCH_LOGGING_REPLICAS"] = strconv.Itoa(k.ElasticsearchLoggingReplicas)
+	y["ENABLE_CLUSTER_DNS"] = strconv.FormatBool(k.EnableClusterDNS)
+	y["ENABLE_CLUSTER_REGISTRY"] = strconv.FormatBool(k.EnableClusterRegistry)
 	y["CLUSTER_REGISTRY_DISK"] = k.ClusterRegistryDisk
-	y["CLUSTER_REGISTRY_DISK_SIZE"] = k.ClusterRegistryDiskSize
-	y["DNS_REPLICAS"] = k.DNSReplicas
+	y["CLUSTER_REGISTRY_DISK_SIZE"] = strconv.Itoa(k.ClusterRegistryDiskSize)
+	y["DNS_REPLICAS"] = strconv.Itoa(k.DNSReplicas)
 	y["DNS_SERVER_IP"] = k.DNSServerIP
 	y["DNS_DOMAIN"] = k.DNSDomain
 
@@ -223,15 +228,17 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	y["KUBE_IMAGE_TAG"] = k.KubeImageTag
 	y["KUBE_DOCKER_REGISTRY"] = k.KubeDockerRegistry
 	y["KUBE_ADDON_REGISTRY"] = k.KubeAddonRegistry
-	y["MULTIZONE"] = k.Multizone
+	if k.Multizone {
+		y["MULTIZONE"] = "1"
+	}
 	y["NON_MASQUERADE_CIDR"] = k.NonMasqueradeCidr
 
 	if k.KubeletPort != 0 {
-		y["KUBELET_PORT"] = k.KubeletPort
+		y["KUBELET_PORT"] = strconv.Itoa(k.KubeletPort)
 	}
 
 	if k.KubeApiserverRequestTimeout != 0 {
-		y["KUBE_APISERVER_REQUEST_TIMEOUT"] = k.KubeApiserverRequestTimeout
+		y["KUBE_APISERVER_REQUEST_TIMEOUT"] = strconv.Itoa(k.KubeApiserverRequestTimeout)
 	}
 
 	if k.TerminatedPodGcThreshold != "" {
@@ -240,7 +247,7 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 
 	if k.OsDistribution == "trusty" {
 		y["KUBE_MANIFESTS_TAR_URL"] = k.KubeManifestsTarURL
-		y["KUBE_MANIFESTS_TAR_HASH"] = k.KubeManifestsTarHash
+		y["KUBE_MANIFESTS_TAR_HASH"] = k.KubeManifestsTarSha256
 	}
 
 	if k.TestCluster != "" {
@@ -260,11 +267,17 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	}
 
 	if k.EnableCustomMetrics {
-		y["ENABLE_CUSTOM_METRICS"] = k.EnableCustomMetrics
+		y["ENABLE_CUSTOM_METRICS"] = strconv.FormatBool(k.EnableCustomMetrics)
 	}
 
 	if isMaster {
-		y["KUBERNETES_MASTER"] = true
+		// If the user requested that the master be part of the cluster, set the
+		// environment variable to program the master kubelet to register itself.
+		if k.RegisterMasterKubelet {
+			y["KUBELET_APISERVER"] = k.MasterName
+		}
+
+		y["KUBERNETES_MASTER"] = strconv.FormatBool(true)
 		y["KUBE_USER"] = k.KubeUser
 		y["KUBE_PASSWORD"] = k.KubePassword
 		y["KUBE_BEARER_TOKEN"] = k.BearerToken
@@ -272,11 +285,11 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 		y["MASTER_KEY"] = ResourceAsBase64String(k.MasterKey)
 		y["KUBECFG_CERT"] = ResourceAsBase64String(k.KubecfgCert)
 		y["KUBECFG_KEY"] = ResourceAsBase64String(k.KubecfgKey)
-		y["KUBELET_APISERVER"] = k.KubeletApiserver
-		y["ENABLE_MANIFEST_URL"] = k.EnableManifestURL
+
+		y["ENABLE_MANIFEST_URL"] = strconv.FormatBool(k.EnableManifestURL)
 		y["MANIFEST_URL"] = k.ManifestURL
 		y["MANIFEST_URL_HEADER"] = k.ManifestURLHeader
-		y["NUM_NODES"] = k.NodeCount
+		y["NUM_NODES"] = strconv.Itoa(k.NodeCount)
 
 		if k.ApiserverTestArgs != "" {
 			y["APISERVER_TEST_ARGS"] = k.ApiserverTestArgs
@@ -307,7 +320,7 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	if !isMaster {
 		// Node-only vars
 
-		y["KUBERNETES_MASTER"] = false
+		y["KUBERNETES_MASTER"] = strconv.FormatBool(false)
 		y["ZONE"] = k.Zone
 		y["EXTRA_DOCKER_OPTS"] = k.ExtraDockerOpts
 		y["MANIFEST_URL"] = k.ManifestURL
@@ -328,7 +341,7 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]interface{}, 
 	if k.OsDistribution == "coreos" {
 		// CoreOS-only env vars. TODO(yifan): Make them available on other distros.
 		y["KUBE_MANIFESTS_TAR_URL"] = k.KubeManifestsTarURL
-		y["KUBE_MANIFESTS_TAR_HASH"] = k.KubeManifestsTarHash
+		y["KUBE_MANIFESTS_TAR_HASH"] = k.KubeManifestsTarSha256
 		y["KUBERNETES_CONTAINER_RUNTIME"] = k.ContainerRuntime
 		y["RKT_VERSION"] = k.RktVersion
 		y["RKT_PATH"] = k.RktPath
@@ -514,7 +527,12 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: fi.NewFileResource("~/.ssh/id_rsa.pub")}
 	c.Add(sshKey)
 
-	vpc := &VPC{CIDR:String("172.20.0.0/16"), Name: String("kubernetes-" + clusterID)}
+	vpc := &VPC{
+		CIDR:String("172.20.0.0/16"),
+		Name: String("kubernetes-" + clusterID),
+		EnableDNSSupport:Bool(true),
+		EnableDNSHostnames:Bool(true),
+	}
 	c.Add(vpc)
 
 	subnet := &Subnet{VPC: vpc, AvailabilityZone: &az, CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID)}
@@ -532,7 +550,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	c.Add(route)
 
 	c.Add(&RouteTableAssociation{RouteTable: routeTable, Subnet: subnet})
-	
+
 	masterSG := &SecurityGroup{
 		Name:        String("kubernetes-master-" + clusterID),
 		Description: String("Security group for master nodes"),
@@ -598,6 +616,8 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		Tags: map[string]string{"Role": "master"},
 	}
 	c.Add(masterInstance)
+
+	c.Add(&InstanceVolumeAttachment{Instance:masterInstance, Volume: masterPV, Device: String("/dev/sdb")})
 
 	nodeConfiguration := &AutoscalingLaunchConfiguration{
 		Name: String(clusterID + "-minion-group"),

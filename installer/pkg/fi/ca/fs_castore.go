@@ -106,10 +106,31 @@ func (c*FilesystemCAStore) getSubjectKey(subject *pkix.Name) string {
 	var s bytes.Buffer
 	for _, rdnSet := range seq {
 		for _, rdn := range rdnSet {
-			if s.Len() == 0 {
+			if s.Len() != 0 {
 				s.WriteString(",")
 			}
-			s.WriteString(fmt.Sprintf("%v=%v", rdn.Type))
+			key := ""
+			t := rdn.Type
+			if len(t) == 4 && t[0] == 2 && t[1] == 5 && t[2] == 4 {
+				switch t[3] {
+				case 3:
+					key = "cn"
+				case 5:
+					key = "serial"
+				case 6:
+					key = "c"
+				case 7:
+					key = "l"
+				case 10:
+					key = "o"
+				case 11:
+					key = "ou"
+				}
+			}
+			if key == "" {
+				key = t.String()
+			}
+			s.WriteString(fmt.Sprintf("%v=%v", key, rdn.Value))
 		}
 	}
 	return s.String()

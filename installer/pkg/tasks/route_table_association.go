@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
+"github.com/aws/aws-sdk-go/aws"
 )
 
 type RouteTableAssociationRenderer interface {
@@ -42,10 +43,8 @@ func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, 
 		return nil, nil
 	}
 
-	filters := []*ec2.Filter{fi.NewEC2Filter("association.subnet-id", *subnetID)}
 	request := &ec2.DescribeRouteTablesInput{
 		RouteTableIds: []*string{routeTableID},
-		Filters:       filters,
 	}
 
 	response, err := cloud.EC2.DescribeRouteTables(request)
@@ -60,6 +59,9 @@ func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, 
 		}
 		rt := response.RouteTables[0]
 		for _, rta := range rt.Associations {
+			if aws.StringValue(rta.SubnetId) != *subnetID {
+				continue
+			}
 			actual := &RouteTableAssociation{}
 			actual.ID = rta.RouteTableAssociationId
 			actual.RouteTable = &RouteTable{ID: rta.RouteTableId }
@@ -99,10 +101,10 @@ func (e *RouteTableAssociation) Run(c *fi.RunContext) error {
 
 func (s *RouteTableAssociation) checkChanges(a, e, changes *RouteTableAssociation) error {
 	if a != nil {
-		if changes.RouteTable.ID != nil {
+		if changes.RouteTable != nil {
 			return InvalidChangeError("Cannot change RouteTableAssociation RouteTable", changes.RouteTable.ID, e.RouteTable.ID)
 		}
-		if changes.Subnet.ID != nil {
+		if changes.Subnet != nil {
 			return InvalidChangeError("Cannot change RouteTableAssociation Subnet", changes.Subnet.ID, e.Subnet.ID)
 		}
 	}
@@ -135,7 +137,7 @@ func (t *AWSAPITarget) RenderRouteTableAssociation(a, e, changes *RouteTableAsso
 		e.ID = response.AssociationId
 	}
 
-	return t.AddAWSTags(*e.ID, "route-table-association", t.cloud.BuildTags(nil))
+	return nil // no tags
 }
 
 func (t *BashTarget) RenderRouteTableAssociation(a, e, changes *RouteTableAssociation) error {
@@ -151,5 +153,5 @@ func (t *BashTarget) RenderRouteTableAssociation(a, e, changes *RouteTableAssoci
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "route-table-association", t.cloud.BuildTags(nil))
+	return nil // no tags
 }

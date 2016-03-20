@@ -18,7 +18,6 @@ type Certificate struct {
 	Subject         pkix.Name
 	IsCA            bool
 
-	CertificateData []byte
 	Certificate     *x509.Certificate
 	PublicKey       crypto.PublicKey
 }
@@ -31,14 +30,13 @@ type CAStore interface {
 	CreatePrivateKey(subject *pkix.Name) (crypto.PrivateKey, error)
 }
 
-func LoadCertificate(certificateData []byte) (*Certificate, error) {
-	cert, err := parseCertificate(certificateData)
+func LoadCertificate(pemData []byte) (*Certificate, error) {
+	cert, err := parsePEMCertificate(pemData)
 	if err != nil {
 		return nil, err
 	}
 
 	c := &Certificate{
-		CertificateData: certificateData,
 		Subject: cert.Subject,
 		Certificate: cert,
 		PublicKey: cert.PublicKey,
@@ -47,8 +45,8 @@ func LoadCertificate(certificateData []byte) (*Certificate, error) {
 	return c, nil
 }
 
-func LoadPrivateKey(privateKeyData []byte) (crypto.PrivateKey, error) {
-	privateKey, err := parsePrivateKey(privateKeyData)
+func LoadPrivateKey(pemData []byte) (crypto.PrivateKey, error) {
+	privateKey, err := parsePEMPrivateKey(pemData)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing private key: %v", err)
 	}
@@ -108,7 +106,6 @@ func SignNewCertificate(privateKey crypto.PrivateKey, template *x509.Certificate
 
 	c := &Certificate{}
 	c.PublicKey = template.PublicKey
-	c.CertificateData = certificateData
 
 	cert, err := x509.ParseCertificate(certificateData)
 	if err != nil {
@@ -120,12 +117,12 @@ func SignNewCertificate(privateKey crypto.PrivateKey, template *x509.Certificate
 }
 
 func (c*Certificate) WriteCertificate(w io.Writer) error {
-	return pem.Encode(w, &pem.Block{Type: "CERTIFICATE", Bytes: c.CertificateData})
+	return pem.Encode(w, &pem.Block{Type: "CERTIFICATE", Bytes: c.Certificate.Raw})
 }
 
-func parseCertificate(data []byte) (*x509.Certificate, error) {
+func parsePEMCertificate(pemData []byte) (*x509.Certificate, error) {
 	for {
-		block, rest := pem.Decode(data)
+		block, rest := pem.Decode(pemData)
 		if block == nil {
 			return nil, fmt.Errorf("could not parse certificate")
 		}
@@ -137,7 +134,7 @@ func parseCertificate(data []byte) (*x509.Certificate, error) {
 			glog.Infof("Ignoring unexpected PEM block: %q", block.Type)
 		}
 
-		data = rest
+		pemData = rest
 	}
 }
 
@@ -150,9 +147,9 @@ func WritePrivateKey(privateKey crypto.PrivateKey, w io.Writer) error {
 	return fmt.Errorf("unknown private key type: %T", privateKey)
 }
 
-func parsePrivateKey(data []byte) (crypto.PrivateKey, error) {
+func parsePEMPrivateKey(pemData []byte) (crypto.PrivateKey, error) {
 	for {
-		block, rest := pem.Decode(data)
+		block, rest := pem.Decode(pemData)
 		if block == nil {
 			return nil, fmt.Errorf("could not parse private key")
 		}
@@ -164,6 +161,6 @@ func parsePrivateKey(data []byte) (crypto.PrivateKey, error) {
 			glog.Infof("Ignoring unexpected PEM block: %q", block.Type)
 		}
 
-		data = rest
+		pemData = rest
 	}
 }

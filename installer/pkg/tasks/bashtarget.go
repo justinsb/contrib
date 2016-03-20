@@ -168,6 +168,13 @@ func (t *BashTarget) AddEC2Command(args ...string) *BashCommand {
 	return t.AddCommand(cmd)
 }
 
+func (t *BashTarget) AddBashCommand(args ...string) *BashCommand {
+	cmd := &BashCommand{parent: t}
+	cmd.args = args
+
+	return t.AddCommand(cmd)
+}
+
 func (t *BashTarget) AddAutoscalingCommand(args ...string) *BashCommand {
 	cmd := &BashCommand{parent: t}
 	cmd.args = t.autoscalingArgs
@@ -246,6 +253,7 @@ func (t *BashTarget) AddAWSTags(s fi.Unit, resourceType string, expected map[str
 }
 
 func (t *BashTarget) AddCommand(cmd *BashCommand) *BashCommand {
+	cmd.parent = t
 	glog.V(2).Infof("Add bash command: %v", cmd)
 	t.commands = append(t.commands, cmd)
 
@@ -315,10 +323,10 @@ func (t *BashTarget) AddLocalResource(r fi.Resource) (string, error) {
 	return path, nil
 }
 
-func (t *BashTarget) PutResource(key string, r fi.Resource) (string, string, error) {
+func (t *BashTarget) PutResource(key string, r fi.Resource, hashAlgorithm fi.HashAlgorithm) (string, string, error) {
 	if r == nil {
 		glog.Fatalf("Attempt to put null resource for %q", key)
 	}
-	return t.filestore.PutResource(key, r)
+	return t.filestore.PutResource(key, r, hashAlgorithm)
 }
 

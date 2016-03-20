@@ -15,3 +15,22 @@ function add-tag {
   exit 1
 }
 
+# Wait for instance to be in specified state
+function wait-for-instance-state {
+  instance_id=$1
+  state=$2
+
+  while true; do
+    instance_state=$(aws ec2 describe-instances --instance-ids ${instance_id} --query Reservations[].Instances[].State.Name --output text)
+    if [[ "$instance_state" == "${state}" ]]; then
+      break
+    else
+      echo "Waiting for instance ${instance_id} to be ${state} (currently ${instance_state})"
+      echo "Sleeping for 3 seconds..."
+      sleep 3
+    fi
+  done
+}
+
+
+

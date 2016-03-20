@@ -18,13 +18,16 @@ func NewS3FileStore(bucket *fi_s3.S3Bucket, prefix string) *S3FileStore {
 	}
 }
 
-func (s*S3FileStore) PutResource(key string, r fi.Resource) (string, string, error) {
-	hash, err := fi.HashMD5ForResource(r)
+func (s*S3FileStore) PutResource(key string, r fi.Resource, hashAlgorithm fi.HashAlgorithm) (string, string, error) {
+	hashes, err := fi.HashesForResource(r, []fi.HashAlgorithm{ fi.HashAlgorithmMD5, hashAlgorithm })
 	if err != nil {
 		return "", "", err
 	}
 
-	s3key := s.prefix + key + "-" + hash
+	md5 := hashes[fi.HashAlgorithmMD5]
+	userHash := hashes[hashAlgorithm]
+
+	s3key := s.prefix + key + "-" + userHash
 	o, err := s.bucket.FindObjectIfExists(s3key)
 	if err != nil {
 		return "", "", err
@@ -38,10 +41,10 @@ func (s*S3FileStore) PutResource(key string, r fi.Resource) (string, string, err
 		if err != nil {
 			return "", "", err
 		}
-		if s3hash == hash {
+		if s3hash == md5 {
 			alreadyPresent = true
 		} else {
-			glog.Infof("Found file, but did not match: %q (%s vs %s)", o, s3hash, hash)
+			glog.Infof("Found file, but did not match: %q (%s vs %s)", o, s3hash, md5)
 		}
 	}
 
@@ -56,7 +59,6 @@ func (s*S3FileStore) PutResource(key string, r fi.Resource) (string, string, err
 		if err != nil {
 			return "", "", err
 		}
-		s3hash = hash
 	}
 
 	err = o.SetPublicACL()
@@ -64,5 +66,5 @@ func (s*S3FileStore) PutResource(key string, r fi.Resource) (string, string, err
 		return "", "", err
 	}
 
-	return o.PublicURL(), s3hash, nil
+	return o.PublicURL(), userHash, nil
 }

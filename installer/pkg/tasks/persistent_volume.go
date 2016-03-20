@@ -68,6 +68,12 @@ func (e *PersistentVolume) Run(c *fi.RunContext) error {
 		return err
 	}
 
+	if a != nil {
+		if e.ID == nil {
+			e.ID = a.ID
+		}
+	}
+	
 	changes := &PersistentVolume{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {

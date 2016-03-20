@@ -7,6 +7,7 @@ import (
 	"k8s.io/contrib/installer/pkg/fi"
 	"gopkg.in/yaml.v2"
 	"bytes"
+	"strconv"
 )
 
 type MasterScript struct {
@@ -45,7 +46,7 @@ func buildScript(c *fi.RunContext, k *K8s, isMaster bool) (string, error) {
 	var bootstrapScriptURL string
 
 	{
-		url, _, err := c.Target.PutResource("bootstrap", k.BootstrapScript)
+		url, _, err := c.Target.PutResource("bootstrap", k.BootstrapScript, fi.HashAlgorithmSHA1)
 		if err != nil {
 			return "", err
 		}
@@ -56,7 +57,7 @@ func buildScript(c *fi.RunContext, k *K8s, isMaster bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data["AUTO_UPGRADE"] = true
+	data["AUTO_UPGRADE"] = strconv.FormatBool(true)
 	// TODO: get rid of these exceptions / harmonize with common or GCE
 	data["DOCKER_STORAGE"] = k.DockerStorage
 	data["API_SERVERS"] = k.MasterInternalIP

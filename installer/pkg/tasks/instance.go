@@ -49,7 +49,7 @@ func (e *Instance) find(c *fi.RunContext) (*Instance, error) {
 	}
 
 	instances := []*ec2.Instance{}
-	if response == nil {
+	if response != nil {
 		for _, reservation := range response.Reservations {
 			for _, instance := range reservation.Instances {
 				instances = append(instances, instance)
@@ -62,7 +62,7 @@ func (e *Instance) find(c *fi.RunContext) (*Instance, error) {
 	}
 
 	if len(instances) != 1 {
-		return nil, fmt.Errorf("found multiple Instances with name: %s", e.Name)
+		return nil, fmt.Errorf("found multiple Instances with name: %s", *e.Name)
 	}
 
 	glog.V(2).Info("found existing instance")
@@ -158,8 +158,7 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		e.ID = response.Instances[0].InstanceId
 	}
 
-	tags := map[string]string{"Name": *e.Name}
-	return t.AddAWSTags(*e.ID, "instance", tags)
+	return t.AddAWSTags(*e.ID, "instance", t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
@@ -184,8 +183,7 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 		t.AddAssignment(e, aws.StringValue(a.ID))
 	}
 
-	tags := map[string]string{"Name": *e.Name}
-	return t.AddAWSTags(e, "instance", tags)
+	return t.AddAWSTags(e, "instance", t.cloud.BuildTags(e.Name))
 }
 
 /*

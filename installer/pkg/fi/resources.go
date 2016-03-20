@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"crypto/md5"
 	"encoding/hex"
+	"hash"
 )
 
 type Resources interface {
@@ -19,14 +19,42 @@ type Resource interface {
 	//SameContents(path string) (bool, error)
 }
 
-func HashMD5ForResource(r Resource) (string, error) {
-	hasher := md5.New()
+func HashForResource(r Resource, hashAlgorithm HashAlgorithm) (string, error) {
+	hasher := NewHasher(hashAlgorithm)
 	err := CopyResource(hasher, r)
 	if err != nil {
 		return "", fmt.Errorf("error while hashing resource: %v", err)
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
+
+func HashesForResource(r Resource, hashAlgorithms []HashAlgorithm) (map[HashAlgorithm]string, error) {
+	hashers := make(map[HashAlgorithm]hash.Hash)
+	var writers []io.Writer
+	for _, hashAlgorithm := range hashAlgorithms {
+		if hashers[hashAlgorithm] != nil {
+			continue
+		}
+		hasher := NewHasher(hashAlgorithm)
+		hashers[hashAlgorithm] = hasher
+		writers = append(writers, hasher)
+	}
+
+	w := io.MultiWriter(writers...)
+
+	err := CopyResource(w, r)
+	if err != nil {
+		return nil, fmt.Errorf("error while hashing resource: %v", err)
+	}
+
+	hashes := make(map[HashAlgorithm]string)
+	for k, hasher := range hashers {
+		hashes[k] = hex.EncodeToString(hasher.Sum(nil))
+	}
+
+	return hashes, nil
+}
+
 
 //type DynamicResource interface {
 //	Resource

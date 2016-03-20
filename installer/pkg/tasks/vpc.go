@@ -39,6 +39,12 @@ func (v *VPC) String() string {
 	if v.ID != nil {
 		s = s + "ID=" + *v.ID + " "
 	}
+	if v.EnableDNSHostnames != nil {
+		s = s + fmt.Sprintf("EnableDNSHostnames=%v ", *v.EnableDNSHostnames)
+	}
+	if v.EnableDNSSupport != nil {
+		s = s + fmt.Sprintf("EnableDNSSupport=%v ", *v.EnableDNSSupport)
+	}
 	s = s + "}"
 	return s
 }
@@ -46,7 +52,6 @@ func (v *VPC) String() string {
 func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	actual := &VPC{}
 	request := &ec2.DescribeVpcsInput{
 		Filters: cloud.BuildFilters(e.Name),
 	}
@@ -57,15 +62,16 @@ func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
 	}
 	if response == nil || len(response.Vpcs) == 0 {
 		return nil, nil
-	} else {
-		if len(response.Vpcs) != 1 {
-			glog.Fatalf("found multiple VPCs matching tags")
-		}
-		vpc := response.Vpcs[0]
-		actual.ID = vpc.VpcId
-		actual.CIDR = vpc.CidrBlock
-		glog.V(2).Infof("found matching VPC %q", *actual.ID)
 	}
+
+	if len(response.Vpcs) != 1 {
+		glog.Fatalf("found multiple VPCs matching tags")
+	}
+	vpc := response.Vpcs[0]
+	actual := &VPC{}
+	actual.ID = vpc.VpcId
+	actual.CIDR = vpc.CidrBlock
+	glog.V(2).Infof("found matching VPC %q", *actual.ID)
 
 	if actual.ID != nil {
 		request := &ec2.DescribeVpcAttributeInput{VpcId: actual.ID, Attribute: aws.String(ec2.VpcAttributeNameEnableDnsSupport)}
@@ -84,6 +90,7 @@ func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
 		}
 		actual.EnableDNSHostnames = response.EnableDnsHostnames.Value
 	}
+	glog.V(4).Infof("found matching VPC %v", actual.String())
 
 	return actual, nil
 }
@@ -189,7 +196,7 @@ func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
 	}
 
 	if changes.EnableDNSHostnames != nil {
-		s := fmt.Sprintf("'{\"Value\": %v}'", *changes.EnableDNSSupport)
+		s := fmt.Sprintf("'{\"Value\": %v}'", *changes.EnableDNSHostnames)
 		t.AddEC2Command("modify-vpc-attribute", "--vpc-id", t.ReadVar(e), "--enable-dns-hostnames", s)
 	}
 
