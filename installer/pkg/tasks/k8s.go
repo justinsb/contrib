@@ -385,6 +385,14 @@ func (k*K8s) Init() {
 
 	k.ContainerRuntime = "docker"
 	k.KubernetesConfigureCbr0 = "true"
+
+
+
+	// Required to work with autoscaling minions
+	k.AllocateNodeCIDRs = true
+
+	k.CloudProvider = "aws"
+
 }
 
 func (k *K8s) Add(c *fi.BuildContext) {
@@ -393,21 +401,47 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		glog.Exit("cluster-id is required")
 	}
 
-	az := k.Zone
-	if len(az) <= 2 {
-		glog.Exit("Invalid AZ: ", az)
+	if len(k.Zone) <= 2 {
+		glog.Exit("Invalid AZ: ", k.Zone)
 	}
 
-	imageID := k.ImageID
-	if imageID == "" {
-		var err error
+	if k.ImageID == "" {
 		jessie := &DistroJessie{}
-		imageID, err = jessie.GetImageID(c.Context)
+		imageID, err := jessie.GetImageID(c.Context)
 		if err != nil {
 			glog.Exitf("error while trying to find AWS image: %v", err)
 		}
+		k.ImageID = imageID
 	}
 	//region := az[:len(az) - 1]
+
+	// Simplifications
+	instancePrefix := k.ClusterID
+	if k.InstancePrefix == "" {
+		k.InstancePrefix = instancePrefix
+	}
+
+	if k.NodeInstancePrefix == "" {
+		k.NodeInstancePrefix = instancePrefix + "-minion"
+	}
+	if k.MasterName == "" {
+		k.MasterName = instancePrefix + "-master"
+	}
+
+	if k.KubeUser == "" {
+		k.KubeUser = "admin"
+	}
+	if k.KubePassword == "" {
+		k.KubePassword = RandomToken(16)
+	}
+
+	if k.KubeletToken == "" {
+		k.KubeletToken = RandomToken(32)
+	}
+
+	if k.KubeProxyToken == "" {
+		k.KubeProxyToken = RandomToken(32)
+	}
 
 	//s3BucketName := k.S3BucketName
 	//if k.S3BucketName == "" {
@@ -461,7 +495,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	c.Add(&CertBuilder{Kubernetes: k})
 
 	masterPV := &PersistentVolume{
-		AvailabilityZone:         String(az),
+		AvailabilityZone:         String(k.Zone),
 		Size:       Int64(int64(k.MasterVolumeSize)),
 		VolumeType: String(k.MasterVolumeType),
 		Name:    String(clusterID + "-master-pd"),
@@ -535,7 +569,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(vpc)
 
-	subnet := &Subnet{VPC: vpc, AvailabilityZone: &az, CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID)}
+	subnet := &Subnet{VPC: vpc, AvailabilityZone: String(k.Zone), CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID)}
 	c.Add(subnet)
 
 	igw := &InternetGateway{Name: String("kubernetes-" + clusterID)}
@@ -607,7 +641,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 			SSHKey:              sshKey,
 			SecurityGroups:      []*SecurityGroup{masterSG},
 			IAMInstanceProfile:  iamMasterInstanceProfile,
-			ImageID:             String(imageID),
+			ImageID:             String(k.ImageID),
 			InstanceType:        String(k.MasterInstanceType),
 			AssociatePublicIP:   Bool(true),
 			BlockDeviceMappings: masterBlockDeviceMappings,
@@ -625,7 +659,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 			SSHKey:              sshKey,
 			SecurityGroups:      []*SecurityGroup{nodeSG},
 			IAMInstanceProfile:  iamNodeInstanceProfile,
-			ImageID:             String(imageID),
+			ImageID:             String(k.ImageID),
 			InstanceType:        String(k.NodeInstanceType),
 			AssociatePublicIP:   Bool(true),
 			BlockDeviceMappings: nodeBlockDeviceMappings,

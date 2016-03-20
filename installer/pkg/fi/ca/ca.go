@@ -99,7 +99,7 @@ func SignNewCertificate(privateKey crypto.PrivateKey, template *x509.Certificate
 	}
 	//c.SignatureAlgorithm  = do we want to overrride?
 
-	certificateData, err := x509.CreateCertificate(crypto_rand.Reader, parent, template, template.PublicKey, signerPrivateKey)
+	certificateData, err := x509.CreateCertificate(crypto_rand.Reader, template, parent, template.PublicKey, signerPrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("error creating certificate: %v", err)
 	}

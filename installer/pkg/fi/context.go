@@ -151,7 +151,7 @@ func (c *Context) initializeNode(unit Unit) {
 		fieldValue := unitValue.Field(i)
 
 		fieldKey := fieldName
-		glog.Warning("TODO: Check field id tag")
+		glog.V(4).Infof("TODO: Check field id tag")
 
 		switch fieldType.Kind() {
 

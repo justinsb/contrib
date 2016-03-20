@@ -112,6 +112,17 @@ func (s *AutoscalingGroup) checkChanges(a, e, changes *AutoscalingGroup) error {
 	return nil
 }
 
+func (e *AutoscalingGroup) buildTags(cloud *fi.AWSCloud) map[string]string {
+	tags := make(map[string]string)
+	for k, v := range cloud.BuildTags(e.Name) {
+		tags[k] = v
+	}
+	for k, v := range e.Tags {
+		tags[k] = v
+	}
+	return tags
+}
+
 func (t *AWSAPITarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) error {
 	if a == nil {
 		glog.V(2).Infof("Creating AutoscalingGroup with Name:%q", *e.Name)
@@ -124,8 +135,13 @@ func (t *AWSAPITarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) e
 		request.VPCZoneIdentifier = e.Subnet.ID
 
 		tags := []*autoscaling.Tag{}
-		for k, v := range e.Tags {
-			tags = append(tags, &autoscaling.Tag{Key:aws.String(k), Value: aws.String(v)})
+		for k, v := range e.buildTags(t.cloud) {
+			tags = append(tags, &autoscaling.Tag{
+				Key:aws.String(k),
+				Value: aws.String(v),
+				ResourceId: e.Name,
+				ResourceType: aws.String("auto-scaling-group"),
+			})
 		}
 		request.Tags = tags
 
@@ -149,10 +165,11 @@ func (t *BashTarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) err
 		args = append(args, "--max-size", strconv.FormatInt(*e.MaxSize, 10))
 		args = append(args, "--vpc-zone-identifier", t.ReadVar(e.Subnet))
 
-		if e.Tags != nil && len(e.Tags) != 0 {
+		tags := e.buildTags(t.cloud)
+		if len(tags) != 0 {
 			args = append(args, "--tags")
-			for k, v := range e.Tags {
-				args = append(args, fmt.Sprintf("ResourceId=%s,ResourceType=auto-scaling-group,Key=%s,Value=%s", e.Name, k, v))
+			for k, v := range tags {
+				args = append(args, fmt.Sprintf("ResourceId=%s,ResourceType=auto-scaling-group,Key=%s,Value=%s", *e.Name, k, v))
 			}
 		}
 

@@ -106,6 +106,17 @@ func (s *Instance) checkChanges(a, e, changes *Instance) error {
 	return nil
 }
 
+func (e *Instance) buildTags(cloud *fi.AWSCloud) map[string]string {
+	tags := make(map[string]string)
+	for k, v := range cloud.BuildTags(e.Name) {
+		tags[k] = v
+	}
+	for k, v := range e.Tags {
+		tags[k] = v
+	}
+	return tags
+}
+
 func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 	if a == nil {
 		glog.V(2).Infof("Creating Instance with Name:%q", *e.Name)
@@ -158,7 +169,7 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		e.ID = response.Instances[0].InstanceId
 	}
 
-	return t.AddAWSTags(*e.ID, "instance", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID, "instance", e.buildTags(t.cloud))
 }
 
 func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
@@ -183,7 +194,7 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 		t.AddAssignment(e, aws.StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "instance", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, "instance", e.buildTags(t.cloud))
 }
 
 /*

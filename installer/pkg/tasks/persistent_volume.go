@@ -23,6 +23,10 @@ type PersistentVolumeRenderer interface {
 	RenderPersistentVolume(actual, expected, changes *PersistentVolume) error
 }
 
+func (s *PersistentVolume) GetID() *string {
+	return s.ID
+}
+
 func (s *PersistentVolume) Key() string {
 	return *s.Name
 }
@@ -73,7 +77,7 @@ func (e *PersistentVolume) Run(c *fi.RunContext) error {
 			e.ID = a.ID
 		}
 	}
-	
+
 	changes := &PersistentVolume{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {

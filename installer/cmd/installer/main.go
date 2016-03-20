@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"net"
 	"os"
 
 	"github.com/golang/glog"
@@ -56,40 +55,21 @@ func main() {
 
 
 
-	// Required to work with autoscaling minions
-	k.AllocateNodeCIDRs = true
-
-	// Simplifications
-	instancePrefix := k.ClusterID
-	k.InstancePrefix = instancePrefix
-
-	nodeInstancePrefix := instancePrefix + "-minion"
-	k.NodeInstancePrefix = nodeInstancePrefix
-	k.MasterName = instancePrefix + "-master"
-
-	k.CloudProvider = "aws"
-
-	k.KubeUser = "admin"
-	k.KubePassword = tasks.RandomToken(16)
-
-	k.KubeletToken = tasks.RandomToken(32)
-	k.KubeProxyToken = tasks.RandomToken(32)
-
-	serviceIP, _, err := net.ParseCIDR(k.ServiceClusterIPRange)
-	if err != nil {
-		glog.Fatalf("Error parsing service-cluster-ip-range: %v", err)
-	}
-	serviceIP[len(serviceIP) - 1]++
-
-	masterExtraSans := []string{
-		"IP:" + serviceIP.String(),
-		"DNS:kubernetes",
-		"DNS:kubernetes.default",
-		"DNS:kubernetes.default.svc",
-		"DNS:kubernetes.default.svc." + k.DNSDomain,
-		"DNS:" + k.MasterName,
-	}
-	k.MasterExtraSans = masterExtraSans
+	//serviceIP, _, err := net.ParseCIDR(k.ServiceClusterIPRange)
+	//if err != nil {
+	//	glog.Fatalf("Error parsing service-cluster-ip-range: %v", err)
+	//}
+	//serviceIP[len(serviceIP) - 1]++
+	//
+	//masterExtraSans := []string{
+	//	"IP:" + serviceIP.String(),
+	//	"DNS:kubernetes",
+	//	"DNS:kubernetes.default",
+	//	"DNS:kubernetes.default.svc",
+	//	"DNS:kubernetes.default.svc." + k.DNSDomain,
+	//	"DNS:" + k.MasterName,
+	//}
+	//k.MasterExtraSans = masterExtraSans
 
 	az := k.Zone
 	if len(az) <= 2 {

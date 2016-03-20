@@ -48,96 +48,94 @@ func (s *SecurityGroupIngress) Key() string {
 func (e *SecurityGroupIngress) find(c *fi.RunContext) (*SecurityGroupIngress, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	var sourceGroupID *string
-	canMatch := false
-	if e.CIDR != nil {
-		canMatch = true
+	if e.SecurityGroup == nil || e.SecurityGroup.ID == nil {
+		return nil, nil
 	}
-	if e.SourceGroup != nil {
-		sourceGroupID = e.SourceGroup.ID
-		if sourceGroupID != nil {
-			canMatch = true
-		}
+
+	request := &ec2.DescribeSecurityGroupsInput{
+		Filters: []*ec2.Filter{
+			fi.NewEC2Filter("group-id", *e.SecurityGroup.ID),
+		},
 	}
+
+	response, err := cloud.EC2.DescribeSecurityGroups(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing SecurityGroup: %v", err)
+	}
+
+	if response == nil || len(response.SecurityGroups) == 0 {
+		return nil, nil
+	}
+
+	if len(response.SecurityGroups) != 1 {
+		glog.Fatalf("found multiple security groups for id=%s", *e.SecurityGroup.ID)
+	}
+	sg := response.SecurityGroups[0]
+	//glog.V(2).Info("found existing security group")
+
 
 	var foundRule *ec2.IpPermission
 
-	var sgID *string
-	if e.SecurityGroup != nil {
-		sgID = e.SecurityGroup.ID
+	matchProtocol := "-1" // Wildcard
+	if e.Protocol != nil {
+		matchProtocol = *e.Protocol
 	}
 
-	if canMatch && sgID != nil {
-		request := &ec2.DescribeSecurityGroupsInput{
-			Filters: []*ec2.Filter{
-				fi.NewEC2Filter("group-id", *sgID),
-			},
+	for _, rule := range sg.IpPermissions {
+		if aws.Int64Value(rule.FromPort) != aws.Int64Value(e.FromPort) {
+			continue
 		}
-
-		response, err := cloud.EC2.DescribeSecurityGroups(request)
-		if err != nil {
-			return nil, fmt.Errorf("error listing security groups: %v", err)
+		if aws.Int64Value(rule.ToPort) != aws.Int64Value(e.ToPort) {
+			continue
 		}
-
-		var existing *ec2.SecurityGroup
-		if response != nil && len(response.SecurityGroups) != 0 {
-			if len(response.SecurityGroups) != 1 {
-				glog.Fatalf("found multiple security groups for id=%s", *sgID)
+		if aws.StringValue(rule.IpProtocol) != matchProtocol {
+			continue
+		}
+		if e.CIDR != nil {
+			// TODO: Only if len 1?
+			match := false
+			for _, ipRange := range rule.IpRanges {
+				if aws.StringValue(ipRange.CidrIp) == *e.CIDR {
+					match = true
+					break
+				}
 			}
-			glog.V(2).Info("found existing security group")
-			existing = response.SecurityGroups[0]
-		}
-
-		if existing != nil {
-			matchProtocol := "-1" // Wildcard
-			if e.Protocol != nil {
-				matchProtocol = *e.Protocol
-			}
-
-			for _, rule := range existing.IpPermissions {
-				if aws.Int64Value(rule.FromPort) != aws.Int64Value(e.FromPort) {
-					continue
-				}
-				if aws.Int64Value(rule.ToPort) != aws.Int64Value(e.ToPort) {
-					continue
-				}
-				if aws.StringValue(rule.IpProtocol) != matchProtocol {
-					continue
-				}
-				match := false
-				if e.CIDR != nil {
-					for _, ipRange := range rule.IpRanges {
-						if aws.StringValue(ipRange.CidrIp) == *e.CIDR {
-							match = true
-							break
-						}
-					}
-				} else if sourceGroupID != nil {
-					for _, spec := range rule.UserIdGroupPairs {
-						if aws.StringValue(spec.GroupId) == *sourceGroupID {
-							match = true
-							break
-						}
-					}
-				} else {
-					glog.Fatalf("Expected CIDR or FromSecurityGroupIngress in %v", e)
-				}
-				if !match {
-					continue
-				}
-				foundRule = rule
-				break
+			if !match {
+				continue
 			}
 		}
+
+		if e.SourceGroup != nil {
+			// TODO: Only if len 1?
+			match := false
+			for _, spec := range rule.UserIdGroupPairs {
+				if aws.StringValue(spec.GroupId) == *e.SourceGroup.ID {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		foundRule = rule
+		break
 	}
 
 	if foundRule != nil {
 		actual := &SecurityGroupIngress{}
+		actual.SecurityGroup = &SecurityGroup{ID: e.SecurityGroup.ID}
 		actual.FromPort = foundRule.FromPort
 		actual.ToPort = foundRule.ToPort
 		actual.Protocol = foundRule.IpProtocol
 		if aws.StringValue(actual.Protocol) == "-1" {
 			actual.Protocol = nil
+		}
+		if e.CIDR != nil {
+			actual.CIDR = e.CIDR
+		}
+		if e.SourceGroup != nil {
+			actual.SourceGroup = &SecurityGroup{ID: e.SourceGroup.ID}
 		}
 		return actual, nil
 	}
@@ -167,8 +165,8 @@ func (e *SecurityGroupIngress) Run(c *fi.RunContext) error {
 }
 
 func (s *SecurityGroupIngress) checkChanges(a, e, changes *SecurityGroupIngress) error {
-	if a != nil {
-		if changes.SecurityGroup == nil {
+	if a == nil {
+		if e.SecurityGroup == nil {
 			return MissingValueError("Must specify SecurityGroup when creating SecurityGroupIngress")
 		}
 	}

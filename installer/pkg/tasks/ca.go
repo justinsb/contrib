@@ -36,8 +36,15 @@ func buildCertificateAlternateNames(k8s *K8s) ([]string, error) {
 	sans = append(sans, "kubernetes.default")
 	sans = append(sans, "kubernetes.default.svc")
 	sans = append(sans, "kubernetes.default.svc." + k8s.DNSDomain)
-	sans = append(sans, k8s.MasterName)
 
+	if k8s.MasterName != "" {
+		sans = append(sans, k8s.MasterName)
+	}
+	
+	if k8s.MasterInternalIP != "" {
+		sans = append(sans, k8s.MasterInternalIP)
+	}
+	glog.Infof("Building certificate with alternate SANS: %v", sans)
 	return sans, nil
 }
 
@@ -129,6 +136,9 @@ func (b *CertBuilder) Run(c *fi.RunContext) error {
 					template.DNSNames = append(template.DNSNames, san)
 				}
 			}
+
+			glog.Infof("X509 SANS IPAddresses: %v", template.IPAddresses)
+			glog.Infof("X509 SANS DNSNames: %v", template.DNSNames)
 
 			privateKey, err := certs.CreatePrivateKey(masterSubject)
 			if err != nil {
