@@ -130,7 +130,7 @@ func (t *AWSAPITarget) RenderSubnet(a, e, changes *Subnet) error {
 		e.ID = subnet.SubnetId
 	}
 
-	return t.AddAWSTags(*e.ID, "subnet", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID, t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
@@ -153,5 +153,5 @@ func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "subnet", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e,t.cloud.BuildTags(e.Name))
 }

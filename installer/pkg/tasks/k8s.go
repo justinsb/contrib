@@ -633,6 +633,12 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(nodeUserData)
 
+	masterIP := &ElasticIP{
+		TagOnResource: masterPV,
+		TagUsingKey: String("kubernetes.io/master-ip"),
+	}
+	c.Add(masterIP)
+
 	masterInstance := &Instance{
 		Name: String(clusterID + "-master"),
 		Subnet:              subnet,
@@ -651,6 +657,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(masterInstance)
 
+	c.Add(&InstanceElasticIPAttachment{Instance:masterInstance, ElasticIP: masterIP})
 	c.Add(&InstanceVolumeAttachment{Instance:masterInstance, Volume: masterPV, Device: String("/dev/sdb")})
 
 	nodeConfiguration := &AutoscalingLaunchConfiguration{

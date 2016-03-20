@@ -102,7 +102,7 @@ func (t *AWSAPITarget) RenderInternetGateway(a, e, changes *InternetGateway) err
 		e.ID = igw.InternetGatewayId
 	}
 
-	return t.AddAWSTags(*e.ID, "internet-gateway", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID, t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderInternetGateway(a, e, changes *InternetGateway) error {
@@ -113,5 +113,5 @@ func (t *BashTarget) RenderInternetGateway(a, e, changes *InternetGateway) error
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "internet-gateway", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, t.cloud.BuildTags(e.Name))
 }

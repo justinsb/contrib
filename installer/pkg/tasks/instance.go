@@ -169,7 +169,7 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		e.ID = response.Instances[0].InstanceId
 	}
 
-	return t.AddAWSTags(*e.ID, "instance", e.buildTags(t.cloud))
+	return t.AddAWSTags(*e.ID, e.buildTags(t.cloud))
 }
 
 func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
@@ -194,7 +194,7 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 		t.AddAssignment(e, aws.StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "instance", e.buildTags(t.cloud))
+	return t.AddAWSTags(e, e.buildTags(t.cloud))
 }
 
 /*

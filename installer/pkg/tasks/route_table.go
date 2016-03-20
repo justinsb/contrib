@@ -110,7 +110,7 @@ func (t *AWSAPITarget) RenderRouteTable(a, e, changes *RouteTable) error {
 		e.ID = rt.RouteTableId
 	}
 
-	return t.AddAWSTags(*e.ID, "route-table", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID, t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
@@ -125,5 +125,5 @@ func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "route-table", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e,  t.cloud.BuildTags(e.Name))
 }

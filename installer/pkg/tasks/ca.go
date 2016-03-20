@@ -40,7 +40,7 @@ func buildCertificateAlternateNames(k8s *K8s) ([]string, error) {
 	if k8s.MasterName != "" {
 		sans = append(sans, k8s.MasterName)
 	}
-	
+
 	if k8s.MasterInternalIP != "" {
 		sans = append(sans, k8s.MasterInternalIP)
 	}

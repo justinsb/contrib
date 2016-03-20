@@ -165,7 +165,7 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 		}
 	}
 
-	return t.AddAWSTags(*e.ID, "vpc", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID, t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
@@ -200,5 +200,5 @@ func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
 		t.AddEC2Command("modify-vpc-attribute", "--vpc-id", t.ReadVar(e), "--enable-dns-hostnames", s)
 	}
 
-	return t.AddAWSTags(e, "vpc", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, t.cloud.BuildTags(e.Name))
 }

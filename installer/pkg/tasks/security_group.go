@@ -131,7 +131,7 @@ func (t *AWSAPITarget) RenderSecurityGroup(a, e, changes *SecurityGroup) error {
 		e.ID = response.GroupId
 	}
 
-	return t.AddAWSTags(*e.ID, "security-group", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID,  t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderSecurityGroup(a, e, changes *SecurityGroup) error {
@@ -147,7 +147,7 @@ func (t *BashTarget) RenderSecurityGroup(a, e, changes *SecurityGroup) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "security-group", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, t.cloud.BuildTags(e.Name))
 }
 
 func (s *SecurityGroup) AllowFrom(source *SecurityGroup) *SecurityGroupIngress {

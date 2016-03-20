@@ -75,21 +75,28 @@ func (t *BashTarget) CreateVar(v fi.Unit) *BashVar {
 type BashCommand struct {
 	parent   *BashTarget
 	args     []string
-	assignTo *BashVar
+	assignTo string
 }
 
 func (c *BashCommand) AssignTo(s fi.Unit) *BashCommand {
+	return c.AssignToSuffixedVariable(s, "")
+}
+
+func (c *BashCommand) AssignToSuffixedVariable(s fi.Unit, suffix string) *BashCommand {
 	bv := c.parent.vars[getKey(s)]
 	if bv == nil {
 		glog.Fatal("no variable assigned to ", s)
 	}
-	c.assignTo = bv
+	if bv.name == "" {
+		glog.Fatal("no name for bash var assignment")
+	}
+	c.assignTo = bv.name + suffix
 	return c
 }
 
 func (c *BashCommand) String() string {
-	if c.assignTo != nil {
-		return c.assignTo.name + "=`" + strings.Join(c.args, " ") + "`"
+	if c.assignTo != "" {
+		return c.assignTo + "=`" + strings.Join(c.args, " ") + "`"
 	} else {
 		return strings.Join(c.args, " ")
 	}
@@ -98,8 +105,8 @@ func (c *BashCommand) String() string {
 func (c *BashCommand) PrintShellCommand(w io.Writer) error {
 	var buf bytes.Buffer
 
-	if c.assignTo != nil {
-		buf.WriteString(c.assignTo.name)
+	if c.assignTo != "" {
+		buf.WriteString(c.assignTo)
 		buf.WriteString("=`")
 	}
 
@@ -110,7 +117,7 @@ func (c *BashCommand) PrintShellCommand(w io.Writer) error {
 		buf.WriteString(arg)
 	}
 
-	if c.assignTo != nil {
+	if c.assignTo != "" {
 		buf.WriteString("`")
 	}
 
@@ -121,13 +128,16 @@ func (c *BashCommand) PrintShellCommand(w io.Writer) error {
 }
 
 func (t *BashTarget) ReadVar(s fi.Unit) string {
+	return t.ReadVarWithSuffix(s, "")
+}
+
+func (t *BashTarget) ReadVarWithSuffix(s fi.Unit, suffix string) string {
 	bv := t.vars[getKey(s)]
 	if bv == nil {
 		glog.Fatal("no variable assigned to ", s)
 	}
-
 	// TODO: Escaping?
-	return "${" + bv.name + "}"
+	return "${" + bv.name + suffix + "}"
 }
 
 func (t *BashTarget) DebugDump() {
@@ -222,11 +232,11 @@ func bashQuoteString(s string) string {
 	return "\"" + string(quoted.Bytes()) + "\""
 }
 
-func (t *BashTarget) AddAWSTags(s fi.Unit, resourceType string, expected map[string]string) error {
+func (t *BashTarget) AddAWSTags(s fi.Unit, expected map[string]string) error {
 	resourceId, exists := t.FindValue(s)
 	var missing map[string]string
 	if exists {
-		actual, err := t.cloud.GetTags(resourceId, resourceType)
+		actual, err := t.cloud.GetTags(resourceId)
 		if err != nil {
 			return fmt.Errorf("unexpected error fetching tags for resource: %v", err)
 		}

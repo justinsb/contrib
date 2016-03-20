@@ -81,19 +81,18 @@ func (c *AWSCloud) Tags() map[string]string {
 	return tags
 }
 
-func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]string, error) {
+func (c *AWSCloud) GetTags(resourceId string) (map[string]string, error) {
 	tags := map[string]string{}
 
 	request := &ec2.DescribeTagsInput{
 		Filters: []*ec2.Filter{
 			NewEC2Filter("resource-id", resourceId),
-			NewEC2Filter("resource-type", resourceType),
 		},
 	}
 
 	response, err := c.EC2.DescribeTags(request)
 	if err != nil {
-		return nil, fmt.Errorf("error listing tags on %v:%v: %v", resourceType, resourceId, err)
+		return nil, fmt.Errorf("error listing tags on %v: %v", resourceId, err)
 	}
 
 	for _, tag := range response.Tags {
@@ -107,7 +106,7 @@ func (c *AWSCloud) GetTags(resourceId string, resourceType string) (map[string]s
 	return tags, nil
 }
 
-func (c *AWSCloud) CreateTags(resourceId string, resourceType string, tags map[string]string) (error) {
+func (c *AWSCloud) CreateTags(resourceId string, tags map[string]string) (error) {
 	if len(tags) == 0 {
 		return nil
 	}
@@ -123,7 +122,7 @@ func (c *AWSCloud) CreateTags(resourceId string, resourceType string, tags map[s
 
 	_, err := c.EC2.CreateTags(request)
 	if err != nil {
-		return fmt.Errorf("error creating tags on %v:%v: %v", resourceType, resourceId, err)
+		return fmt.Errorf("error creating tags on %v: %v", resourceId, err)
 	}
 
 	return nil

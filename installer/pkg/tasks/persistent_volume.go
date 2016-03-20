@@ -124,7 +124,7 @@ func (t *AWSAPITarget) RenderPersistentVolume(a, e, changes *PersistentVolume) e
 		e.ID = response.VolumeId
 	}
 
-	return t.AddAWSTags(*e.ID, "volume", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(*e.ID, t.cloud.BuildTags(e.Name))
 }
 
 func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) error {
@@ -141,5 +141,5 @@ func (t *BashTarget) RenderPersistentVolume(a, e, changes *PersistentVolume) err
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e, "volume", t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, t.cloud.BuildTags(e.Name))
 }

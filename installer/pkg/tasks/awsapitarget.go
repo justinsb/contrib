@@ -12,8 +12,8 @@ type AWSAPITarget struct {
 	cloud *fi.AWSCloud
 }
 
-func (t *AWSAPITarget) AddAWSTags(id string, resourceType string, expected map[string]string) error {
-	actual, err := t.cloud.GetTags(id, resourceType)
+func (t *AWSAPITarget) AddAWSTags(id string, expected map[string]string) error {
+	actual, err := t.cloud.GetTags(id)
 	if err != nil {
 		return fmt.Errorf("unexpected error fetching tags for resource: %v", err)
 	}
