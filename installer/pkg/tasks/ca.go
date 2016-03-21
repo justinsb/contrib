@@ -10,12 +10,14 @@ import (
 	"github.com/golang/glog"
 	"crypto"
 	"net"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 type CertBuilder struct {
 	fi.SimpleUnit
 
 	Kubernetes *K8s
+	MasterIP   *ElasticIP
 }
 
 func (c*CertBuilder) Key() string {
@@ -44,6 +46,7 @@ func buildCertificateAlternateNames(k8s *K8s) ([]string, error) {
 	if k8s.MasterInternalIP != "" {
 		sans = append(sans, k8s.MasterInternalIP)
 	}
+
 	glog.Infof("Building certificate with alternate SANS: %v", sans)
 	return sans, nil
 }
@@ -60,6 +63,15 @@ func (b *CertBuilder) Run(c *fi.RunContext) error {
 		}
 
 		k8s.CACert = certToResource(caCert)
+	}
+
+	if k8s.CAKey == nil {
+		caKey, err := certs.GetCAKey()
+		if err != nil {
+			return err
+		}
+
+		k8s.CAKey = keyToResource(caKey)
 	}
 
 	kubeletSubject := &pkix.Name{
@@ -128,6 +140,16 @@ func (b *CertBuilder) Run(c *fi.RunContext) error {
 			alternateNames, err := buildCertificateAlternateNames(k8s)
 			if err != nil {
 				return err
+			}
+			if b.MasterIP != nil {
+				actual, err := b.MasterIP.find(c)
+				if err != nil {
+					return fmt.Errorf("error querying for Master PublicIP: %v", err)
+				}
+				if actual == nil || aws.StringValue(actual.PublicIP) == "" {
+					return fmt.Errorf("cannot build SANs for master cert until master Public IP is allocated: %v", err)
+				}
+				alternateNames = append(alternateNames, aws.StringValue(actual.PublicIP))
 			}
 			for _, san := range alternateNames {
 				if ip := net.ParseIP(san); ip != nil {

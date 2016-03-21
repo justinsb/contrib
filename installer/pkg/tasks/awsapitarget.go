@@ -6,10 +6,23 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"k8s.io/contrib/installer/pkg/fi"
+	"github.com/golang/glog"
+	"k8s.io/contrib/installer/pkg/fi/filestore"
+	"time"
 )
 
 type AWSAPITarget struct {
-	cloud *fi.AWSCloud
+	cloud     *fi.AWSCloud
+	filestore filestore.FileStore
+}
+
+var _ fi.Target = &AWSAPITarget{}
+
+func NewAWSAPITarget(cloud*fi.AWSCloud, filestore filestore.FileStore) *AWSAPITarget {
+	return &AWSAPITarget{
+		cloud: cloud,
+		filestore: filestore,
+	}
 }
 
 func (t *AWSAPITarget) AddAWSTags(id string, expected map[string]string) error {
@@ -45,3 +58,41 @@ func (t *AWSAPITarget) AddAWSTags(id string, expected map[string]string) error {
 
 	return nil
 }
+
+func (t *AWSAPITarget) PutResource(key string, r fi.Resource, hashAlgorithm fi.HashAlgorithm) (string, string, error) {
+	if r == nil {
+		glog.Fatalf("Attempt to put null resource for %q", key)
+	}
+	return t.filestore.PutResource(key, r, hashAlgorithm)
+}
+
+func (t *AWSAPITarget) WaitForInstanceRunning(instanceID string) (error) {
+	attempt := 0
+	for {
+		instance, err := t.cloud.DescribeInstance(instanceID)
+		if err != nil {
+			return fmt.Errorf("error while waiting for instance to be running: %v", err)
+		}
+
+		if instance == nil {
+			// TODO: Wait if we _just_ created the instance?
+			return fmt.Errorf("instance not found while waiting for instance to be running")
+		}
+
+		state := "?"
+		if instance.State != nil {
+			state = aws.StringValue(instance.State.Name)
+		}
+		glog.V(4).Infof("state of instance %q is %q", instanceID, state)
+		if state == "running" {
+			return nil
+		}
+
+		time.Sleep(10 * time.Second)
+		attempt++
+		if attempt > 30 {
+			return fmt.Errorf("timeout waiting for instance %q to be running, state was %q", instanceID, state)
+		}
+	}
+}
+

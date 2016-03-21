@@ -1,0 +1,20 @@
+P0
+
+Fix SSH key
+
+DHCP option set
+
+=======================================================
+
+P2
+
+Need to add the elastic IP to the list of SANs... tricky interdependencies...
+
+Should we have a pre-gen stage?  Where we set up the CA?
+Another where we upload our resources?
+
+Should we tag our resources on S3 e.g. with SHA1?
+
+We should probably be able to change the CA key etc
+
+We should regenerate the cert when we have a different set of SANs

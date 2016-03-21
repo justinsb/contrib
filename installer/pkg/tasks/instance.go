@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
+	"encoding/base64"
 )
 
 type InstanceRenderer interface {
@@ -131,15 +132,18 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		for _, sg := range e.SecurityGroups {
 			securityGroupIDs = append(securityGroupIDs, sg.ID)
 		}
-		request.SecurityGroups = securityGroupIDs
 		request.NetworkInterfaces = []*ec2.InstanceNetworkInterfaceSpecification{
 			{
 				DeviceIndex:aws.Int64(0),
 				AssociatePublicIpAddress:e.AssociatePublicIP,
 				SubnetId:e.Subnet.ID,
+				PrivateIpAddress:e.PrivateIPAddress,
+				Groups: securityGroupIDs,
 			},
 		}
-		request.PrivateIpAddress = e.PrivateIPAddress
+
+		request.MinCount = aws.Int64(1)
+		request.MaxCount = aws.Int64(1)
 
 		if e.BlockDeviceMappings != nil {
 			request.BlockDeviceMappings = []*ec2.BlockDeviceMapping{}
@@ -149,11 +153,11 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 		}
 
 		if e.UserData != nil {
-			d, err := fi.ResourceAsString(e.UserData)
+			d, err := fi.ResourceAsBytes(e.UserData)
 			if err != nil {
 				return fmt.Errorf("error rendering Instance UserData: %v", err)
 			}
-			request.UserData = aws.String(d)
+			request.UserData = aws.String(base64.StdEncoding.EncodeToString(d))
 		}
 		if e.IAMInstanceProfile != nil {
 			request.IamInstanceProfile = &ec2.IamInstanceProfileSpecification{

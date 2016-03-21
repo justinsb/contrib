@@ -50,6 +50,12 @@ func (e *IAMInstanceProfile) Run(c *fi.RunContext) error {
 		return err
 	}
 
+	if a != nil {
+		if e.ID == nil {
+			e.ID = a.ID
+		}
+	}
+
 	changes := &IAMInstanceProfile{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {

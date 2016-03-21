@@ -85,11 +85,16 @@ func (s *InstanceElasticIPAttachment) checkChanges(a, e, changes *InstanceElasti
 
 func (t *AWSAPITarget) RenderInstanceElasticIPAttachment(a, e, changes *InstanceElasticIPAttachment) error {
 	if changes.Instance != nil {
+		err := t.WaitForInstanceRunning(*e.Instance.ID)
+		if err != nil {
+			return err
+		}
+
 		request := &ec2.AssociateAddressInput{}
 		request.InstanceId = e.Instance.ID
 		request.AllocationId = a.ElasticIP.ID
 
-		_, err := t.cloud.EC2.AssociateAddress(request)
+		_, err = t.cloud.EC2.AssociateAddress(request)
 		if err != nil {
 			return fmt.Errorf("error creating InstanceElasticIPAttachment: %v", err)
 		}
@@ -101,10 +106,11 @@ func (t *AWSAPITarget) RenderInstanceElasticIPAttachment(a, e, changes *Instance
 func (t *BashTarget) RenderInstanceElasticIPAttachment(a, e, changes *InstanceElasticIPAttachment) error {
 	//t.CreateVar(e)
 	if a == nil {
+		t.WaitForInstanceRunning(e.Instance)
+
 		instanceID := t.ReadVar(e.Instance)
 		allocationID := t.ReadVar(e.ElasticIP)
 
-		t.AddBashCommand("wait-for-instance-state", instanceID, "running")
 		t.AddEC2Command("associate-address", "--allocation-id", allocationID, "--instance-id", instanceID)
 	} else {
 		//t.AddAssignment(e, StringValue(a.ID))

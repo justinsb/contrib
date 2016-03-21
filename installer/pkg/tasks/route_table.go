@@ -49,6 +49,7 @@ func (e *RouteTable) find(c *fi.RunContext) (*RouteTable, error) {
 		rt := response.RouteTables[0]
 		actual.ID = rt.RouteTableId
 		actual.VPC = &VPC{ID: rt.VpcId}
+		actual.Name = e.Name
 		glog.V(2).Infof("found matching RouteTable %q", *actual.ID)
 	}
 

@@ -15,15 +15,16 @@ import (
 )
 
 type Certificate struct {
-	Subject         pkix.Name
-	IsCA            bool
+	Subject     pkix.Name
+	IsCA        bool
 
-	Certificate     *x509.Certificate
-	PublicKey       crypto.PublicKey
+	Certificate *x509.Certificate
+	PublicKey   crypto.PublicKey
 }
 
 type CAStore interface {
 	GetCACert() (*Certificate, error)
+	GetCAKey() (crypto.PrivateKey, error)
 	FindCert(subject *pkix.Name) (*Certificate, error)
 	IssueCert(privateKey crypto.PrivateKey, template *x509.Certificate) (*Certificate, error)
 	FindPrivateKey(subject *pkix.Name) (crypto.PrivateKey, error)

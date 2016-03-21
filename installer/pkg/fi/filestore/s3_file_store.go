@@ -61,9 +61,15 @@ func (s*S3FileStore) PutResource(key string, r fi.Resource, hashAlgorithm fi.Has
 		}
 	}
 
-	err = o.SetPublicACL()
+	isPublic, err := o.IsPublic()
 	if err != nil {
 		return "", "", err
+	}
+	if !isPublic {
+		err = o.SetPublicACL()
+		if err != nil {
+			return "", "", err
+		}
 	}
 
 	return o.PublicURL(), userHash, nil

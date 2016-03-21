@@ -13,7 +13,7 @@ func (c *node) Add(node *node) {
 
 func (n *node) Run(c *RunContext) error {
 	if n.unit != nil {
-		glog.V(2).Infof("Running unit %v", n.unit)
+		glog.V(2).Infof("Executing unit %v", n.unit)
 		err := n.unit.Run(c)
 		if err != nil {
 			return err

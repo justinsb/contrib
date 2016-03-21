@@ -128,7 +128,6 @@ func (c *AWSCloud) CreateTags(resourceId string, tags map[string]string) (error)
 	return nil
 }
 
-
 func (c *AWSCloud) BuildTags(name *string) map[string]string {
 	tags := make(map[string]string)
 	if name != nil {
@@ -168,3 +167,35 @@ func (c *AWSCloud) EnvVars() map[string]string {
 	env["AWS_DEFAULT_OUTPUT"] = "text"
 	return env
 }
+
+func (t *AWSCloud) DescribeInstance(instanceID string) (*ec2.Instance, error) {
+	glog.V(2).Infof("Calilng DescribeInstances for instance %q", instanceID)
+	request := &ec2.DescribeInstancesInput{
+		InstanceIds: []*string{&instanceID},
+	}
+
+	response, err := t.EC2.DescribeInstances(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing Instances: %v", err)
+	}
+	if response == nil || len(response.Reservations) == 0 {
+		return nil, nil
+	}
+	if len(response.Reservations) != 1 {
+		glog.Fatalf("found multiple Reservations for instance id")
+	}
+
+	reservation := response.Reservations[0]
+	if len(reservation.Instances) == 0 {
+		return nil, nil
+	}
+
+	if len(reservation.Instances) != 1 {
+		glog.Fatalf("found multiple Instances for instance id")
+	}
+
+	instance := reservation.Instances[0]
+	return instance, nil
+}
+
+

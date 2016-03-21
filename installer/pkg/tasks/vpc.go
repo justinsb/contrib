@@ -117,7 +117,6 @@ func (e *VPC) Run(c *fi.RunContext) error {
 }
 
 func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
-	glog.V(2).Infof("Rendering via AWS API: %v", changes)
 	id := StringValue(e.ID)
 	if changes.CIDR != nil {
 		// TODO: Do we want to destroy & recreate the CIDR?
@@ -169,7 +168,6 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 }
 
 func (t *BashTarget) RenderVPC(a, e, changes *VPC) error {
-	glog.V(2).Infof("Rendering to bash: %v", changes)
 	t.CreateVar(e)
 
 	if a == nil {

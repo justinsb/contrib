@@ -41,6 +41,7 @@ func (s*S3Helper) GetS3(region string) *s3.S3 {
 }
 
 func (s*S3Helper) FindBucketIfExists(name string) (*S3Bucket, error) {
+	glog.V(2).Infof("Getting location of S3 bucket: %s", name)
 	request := &s3.GetBucketLocationInput{
 		Bucket: aws.String(name),
 	}
@@ -81,6 +82,7 @@ func (s*S3Helper) EnsureBucket(name string, region string) (*S3Bucket, error) {
 		return nil, err
 	}
 	if bucket == nil {
+		glog.V(2).Infof("Creating S3 bucket: %s", name)
 		request := &s3.CreateBucketInput{
 			Bucket: aws.String(name),
 		}
@@ -173,6 +175,8 @@ type S3Object struct {
 }
 
 func (o*S3Object) headObject() (*s3.HeadObjectOutput, error) {
+	glog.V(2).Infof("Checking for S3 object: %s", o)
+
 	request := &s3.HeadObjectInput{
 		Bucket: aws.String(o.Bucket.Name),
 		Key:    aws.String(o.Key),
@@ -198,6 +202,8 @@ func (o*S3Object) String() string {
 }
 
 func (o*S3Object) IsPublic() (bool, error) {
+	glog.V(2).Infof("Getting for S3 object ACL: %s", o)
+
 	aclRequest := &s3.GetObjectAclInput{
 		Bucket: aws.String(o.Bucket.Name),
 		Key: aws.String(o.Key),
@@ -247,6 +253,8 @@ func (o*S3Object) PublicURL() (string) {
 }
 
 func (o*S3Object) SetPublicACL() (error) {
+	glog.V(2).Infof("Setting S3 object ACL: %s", o)
+
 	request := &s3.PutObjectAclInput{
 		Bucket: aws.String(o.Bucket.Name),
 		Key: aws.String(o.Key),

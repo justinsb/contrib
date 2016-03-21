@@ -6,6 +6,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
+	"encoding/base64"
+"github.com/aws/aws-sdk-go/aws"
 )
 
 type AutoscalingLaunchConfiguration struct {
@@ -131,14 +133,14 @@ func (t *AWSAPITarget) RenderAutoscalingLaunchConfiguration(a, e, changes *Autos
 		}
 
 		if e.UserData != nil {
-			d, err := fi.ResourceAsString(e.UserData)
+			d, err := fi.ResourceAsBytes(e.UserData)
 			if err != nil {
 				return fmt.Errorf("error rendering AutoScalingLaunchConfiguration UserData: %v", err)
 			}
-			request.UserData = &d
+			request.UserData = aws.String(base64.StdEncoding.EncodeToString(d))
 		}
 		if e.IAMInstanceProfile != nil {
-			request.IamInstanceProfile = e.IAMInstanceProfile.ID
+			request.IamInstanceProfile = e.IAMInstanceProfile.Name
 		}
 
 		_, err := t.cloud.Autoscaling.CreateLaunchConfiguration(request)

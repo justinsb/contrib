@@ -35,31 +35,10 @@ func (e *InstanceVolumeAttachment) find(c *fi.RunContext) (*InstanceVolumeAttach
 		return nil, nil
 	}
 
-	request := &ec2.DescribeInstancesInput{
-		InstanceIds: []*string{instanceID},
-	}
-
-	response, err := cloud.EC2.DescribeInstances(request)
+	instance, err := cloud.DescribeInstance(*instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("error listing Instances: %v", err)
+		return nil, err
 	}
-	if response == nil || len(response.Reservations) == 0 {
-		return nil, nil
-	}
-	if len(response.Reservations) != 1 {
-		glog.Fatalf("found multiple Reservations for instance id")
-	}
-
-	reservation := response.Reservations[0]
-	if len(reservation.Instances) == 0 {
-		return nil, nil
-	}
-
-	if len(reservation.Instances) != 1 {
-		glog.Fatalf("found multiple Instances for instance id")
-	}
-
-	instance := reservation.Instances[0]
 
 	for _, bdm := range instance.BlockDeviceMappings {
 		if bdm.Ebs == nil {
@@ -119,12 +98,17 @@ func (s *InstanceVolumeAttachment) checkChanges(a, e, changes *InstanceVolumeAtt
 
 func (t *AWSAPITarget) RenderInstanceVolumeAttachment(a, e, changes *InstanceVolumeAttachment) error {
 	if a == nil {
+		err := t.WaitForInstanceRunning(*e.Instance.ID)
+		if err != nil {
+			return err
+		}
+
 		request := &ec2.AttachVolumeInput{}
 		request.InstanceId = e.Instance.ID
 		request.VolumeId = e.Volume.ID
 		request.Device = e.Device
 
-		_, err := t.cloud.EC2.AttachVolume(request)
+		_, err = t.cloud.EC2.AttachVolume(request)
 		if err != nil {
 			return fmt.Errorf("error creating InstanceVolumeAttachment: %v", err)
 		}
@@ -136,10 +120,11 @@ func (t *AWSAPITarget) RenderInstanceVolumeAttachment(a, e, changes *InstanceVol
 func (t *BashTarget) RenderInstanceVolumeAttachment(a, e, changes *InstanceVolumeAttachment) error {
 	//t.CreateVar(e)
 	if a == nil {
+		t.WaitForInstanceRunning(e.Instance)
+
 		instanceID := t.ReadVar(e.Instance)
 		volumeID := t.ReadVar(e.Volume)
 
-		t.AddBashCommand("wait-for-instance-state", instanceID, "running")
 		t.AddEC2Command("attach-volume", "--volume-id", volumeID, "--instance-id", instanceID, "--device", *e.Device)
 	} else {
 		//t.AddAssignment(e, StringValue(a.ID))

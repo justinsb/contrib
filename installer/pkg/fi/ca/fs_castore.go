@@ -150,6 +150,10 @@ func (c *FilesystemCAStore) GetCACert() (*Certificate, error) {
 	return c.caCertificate, nil
 }
 
+func (c *FilesystemCAStore) GetCAKey() (crypto.PrivateKey, error) {
+	return c.caPrivateKey, nil
+}
+
 func (c *FilesystemCAStore) loadCertificate(p string) (*Certificate, error) {
 	data, err := ioutil.ReadFile(p)
 	if err != nil {

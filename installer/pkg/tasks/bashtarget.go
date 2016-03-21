@@ -340,3 +340,9 @@ func (t *BashTarget) PutResource(key string, r fi.Resource, hashAlgorithm fi.Has
 	return t.filestore.PutResource(key, r, hashAlgorithm)
 }
 
+func (t *BashTarget) WaitForInstanceRunning(instance *Instance)  {
+	instanceID := t.ReadVar(instance)
+	t.AddBashCommand("wait-for-instance-state", instanceID, "running")
+}
+
+

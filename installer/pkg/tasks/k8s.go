@@ -75,6 +75,7 @@ type K8s struct {
 	RuntimeConfig                 string
 
 	CACert                        fi.Resource
+	CAKey                         fi.Resource
 	KubeletCert                   fi.Resource
 	KubeletKey                    fi.Resource
 	KubeletToken                  string
@@ -349,6 +350,10 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 
 	}
 
+
+	// This next bit for changes vs kube-up:
+	y["CA_KEY"] = ResourceAsBase64String(k.CAKey) // https://github.com/kubernetes/kubernetes/issues/23264
+
 	return y, nil
 }
 
@@ -492,8 +497,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	//k.SaltTarHash = s3SaltFile.Hash()
 	//k.BootstrapScriptURL = s3BootstrapScriptFile.PublicURL()
 
-	c.Add(&CertBuilder{Kubernetes: k})
-
 	masterPV := &PersistentVolume{
 		AvailabilityZone:         String(k.Zone),
 		Size:       Int64(int64(k.MasterVolumeSize)),
@@ -501,6 +504,14 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		Name:    String(clusterID + "-master-pd"),
 	}
 	c.Add(masterPV)
+
+	masterIP := &ElasticIP{
+		TagOnResource: masterPV,
+		TagUsingKey: String("kubernetes.io/master-ip"),
+	}
+	c.Add(masterIP)
+
+	c.Add(&CertBuilder{Kubernetes: k, MasterIP: masterIP})
 
 	//glog.Info("Processing master volume resource")
 	//masterPVResources := []fi.Unit{
@@ -632,12 +643,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		Config: k,
 	}
 	c.Add(nodeUserData)
-
-	masterIP := &ElasticIP{
-		TagOnResource: masterPV,
-		TagUsingKey: String("kubernetes.io/master-ip"),
-	}
-	c.Add(masterIP)
 
 	masterInstance := &Instance{
 		Name: String(clusterID + "-master"),
