@@ -6,6 +6,7 @@ import (
 	"k8s.io/contrib/installer/pkg/fi"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/elb"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"encoding/base64"
@@ -102,6 +103,35 @@ func (c*DeleteCluster)  ListResources() ([]DeletableResource, error) {
 	}
 
 	{
+		glog.V(2).Infof("Listing all ELB tags")
+
+		request := &elb.DescribeLoadBalancersInput{
+		}
+		response, err := cloud.ELB.DescribeLoadBalancers(request)
+		if err != nil {
+			return nil, fmt.Errorf("error listing elb LoadBalancers: %v", err)
+		}
+
+		for _, lb := range response.LoadBalancerDescriptions {
+			// TODO: batch?
+			request := &elb.DescribeTagsInput{
+				LoadBalancerNames: []*string{lb.LoadBalancerName},
+			}
+			response, err := cloud.ELB.DescribeTags(request)
+			if err != nil {
+				return nil, fmt.Errorf("error listing elb Tags: %v", err)
+			}
+
+			for _, t := range response.TagDescriptions {
+				if !matchesElbTags(tags, t.Tags) {
+					continue
+				}
+				resources = append(resources, &DeletableELBLoadBalancer{Name: *t.LoadBalancerName })
+			}
+		}
+	}
+
+	{
 
 		glog.V(2).Infof("Listing all EC2 tags matching cluster tags")
 		request := &ec2.DescribeTagsInput{
@@ -119,6 +149,10 @@ func (c*DeleteCluster)  ListResources() ([]DeletableResource, error) {
 				resource = &DeletableInstance{ID: *t.ResourceId}
 			case "volume":
 				resource = &DeletableVolume{ID: *t.ResourceId}
+			case "subnet":
+				resource = &DeletableSubnet{ID: *t.ResourceId}
+			case "security-group":
+				resource = &DeletableSecurityGroup{ID: *t.ResourceId}
 			}
 
 			if resource == nil {
@@ -134,6 +168,24 @@ func (c*DeleteCluster)  ListResources() ([]DeletableResource, error) {
 }
 
 func matchesAsgTags(tags map[string]string, actual []*autoscaling.TagDescription) bool {
+	for k, v := range tags {
+		found := false
+		for _, a := range actual {
+			if aws.StringValue(a.Key) == k {
+				if aws.StringValue(a.Value) == v {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func matchesElbTags(tags map[string]string, actual []*elb.Tag) bool {
 	for k, v := range tags {
 		found := false
 		for _, a := range actual {
@@ -176,6 +228,60 @@ func (r*DeletableInstance) String() string {
 	return "instance:" + r.ID
 }
 
+type DeletableSecurityGroup struct {
+	ID string
+}
+
+func (r*DeletableSecurityGroup) Delete(cloud fi.Cloud) error {
+	c := cloud.(*fi.AWSCloud)
+
+	// First clear all inter-dependent rules
+	// TODO: Move to a "pre-execute" phase?
+	{
+		request := &ec2.DescribeSecurityGroupsInput{
+			GroupIds: []*string{&r.ID},
+		}
+		response, err := c.EC2.DescribeSecurityGroups(request)
+		if err != nil {
+			return fmt.Errorf("error describing SecurityGroup %q: %v", r.ID, err)
+		}
+
+		if len(response.SecurityGroups) == 0 {
+			return nil
+		}
+		if len(response.SecurityGroups) != 1 {
+			return fmt.Errorf("found mutiple SecurityGroups with ID %q", r.ID)
+		}
+		sg := response.SecurityGroups[0]
+
+		if len(sg.IpPermissions) != 0 {
+			revoke := &ec2.RevokeSecurityGroupIngressInput{
+				GroupId: &r.ID,
+				IpPermissions: sg.IpPermissions,
+			}
+			_, err = c.EC2.RevokeSecurityGroupIngress(revoke)
+			if err != nil {
+				return fmt.Errorf("cannot revoke ingress for ID %q: %v", r.ID, err)
+			}
+		}
+	}
+
+	{
+		glog.V(2).Infof("Deleting EC2 SecurityGroup %q", r.ID)
+		request := &ec2.DeleteSecurityGroupInput{
+			GroupId: &r.ID,
+		}
+		_, err := c.EC2.DeleteSecurityGroup(request)
+		if err != nil {
+			return fmt.Errorf("error deleting SecurityGroup %q: %v", r.ID, err)
+		}
+	}
+	return nil
+}
+func (r*DeletableSecurityGroup) String() string {
+	return "SecurityGroup:" + r.ID
+}
+
 type DeletableVolume struct {
 	ID string
 }
@@ -200,6 +306,27 @@ func (r*DeletableVolume) Delete(cloud fi.Cloud) error {
 }
 func (r*DeletableVolume) String() string {
 	return "volume:" + r.ID
+}
+
+type DeletableSubnet struct {
+	ID string
+}
+
+func (r*DeletableSubnet) Delete(cloud fi.Cloud) error {
+	c := cloud.(*fi.AWSCloud)
+
+	glog.V(2).Infof("Deleting EC2 Subnet %q", r.ID)
+	request := &ec2.DeleteSubnetInput{
+		SubnetId: &r.ID,
+	}
+	_, err := c.EC2.DeleteSubnet(request)
+	if err != nil {
+		return fmt.Errorf("error deleting Subnet %q: %v", r.ID, err)
+	}
+	return nil
+}
+func (r*DeletableSubnet) String() string {
+	return "Subnet:" + r.ID
 }
 
 type DeletableASG struct {
@@ -245,4 +372,27 @@ func (r*DeletableAutoscalingLaunchConfiguration) Delete(cloud fi.Cloud) error {
 func (r*DeletableAutoscalingLaunchConfiguration) String() string {
 	return "autoscaling-launchconfiguration:" + r.Name
 }
+
+type DeletableELBLoadBalancer struct {
+	Name string
+}
+
+func (r*DeletableELBLoadBalancer) Delete(cloud fi.Cloud) error {
+	c := cloud.(*fi.AWSCloud)
+
+	glog.V(2).Infof("Deleting LoadBalancer %q", r.Name)
+	request := &elb.DeleteLoadBalancerInput{
+		LoadBalancerName: &r.Name,
+	}
+	_, err := c.ELB.DeleteLoadBalancer(request)
+	if err != nil {
+		return fmt.Errorf("error deleting LoadBalancer %q: %v", r.Name, err)
+	}
+	return nil
+}
+
+func (r*DeletableELBLoadBalancer) String() string {
+	return "LoadBalancer:" + r.Name
+}
+
 

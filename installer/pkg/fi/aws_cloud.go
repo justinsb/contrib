@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/golang/glog"
 	fi_s3 "k8s.io/contrib/installer/pkg/fi/aws/s3"
+"github.com/aws/aws-sdk-go/service/elb"
 )
 
 type AWSCloud struct {
@@ -18,6 +19,7 @@ type AWSCloud struct {
 	EC2         *ec2.EC2
 	S3          *fi_s3.S3Helper
 	IAM         *iam.IAM
+	ELB         *elb.ELB
 	Autoscaling *autoscaling.AutoScaling
 
 	Region      string
@@ -50,6 +52,7 @@ func NewAWSCloud(region string, tags map[string]string) *AWSCloud {
 	c.EC2 = ec2.New(session.New(), config)
 	c.S3 = fi_s3.NewS3Helper(config)
 	c.IAM = iam.New(session.New(), config)
+	c.ELB = elb.New(session.New(), config)
 	c.Autoscaling = autoscaling.New(session.New(), config)
 
 	c.tags = tags
