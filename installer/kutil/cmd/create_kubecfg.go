@@ -5,12 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/golang/glog"
-	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"k8s.io/contrib/installer/kutil/pkg/kutil"
-	"strings"
 	"os"
-	"encoding/base64"
 	"path"
 )
 
@@ -42,78 +39,26 @@ func init() {
 	cmd.Flags().BoolVar(&createKubecfg.UseKubeletCert, "use-kubelet-cert", false, "Build using the kublet cert (useful if the kubecfg cert is not available)")
 }
 
-func parsePrivateKeyFile(p string) (ssh.AuthMethod, error) {
-	buffer, err := ioutil.ReadFile(p)
-	if err != nil {
-		return nil, fmt.Errorf("error reading key file %q: %v", p, err)
-	}
-
-	key, err := ssh.ParsePrivateKey(buffer)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing key file %q: %v", p, err)
-	}
-	return ssh.PublicKeys(key), nil
-}
-
 func (c*CreateKubecfgCmd) Run() error {
 	if c.Master == "" {
 		return fmt.Errorf("--master must be specified")
 	}
 	fmt.Printf("Connecting to %s\n", c.Master)
 
-	sshConfig := &ssh.ClientConfig{
-		User: "admin",
+	master := &kutil.NodeSSH{
+		IP: c.Master,
 	}
-
-	if c.SSHIdentity != "" {
-		a, err := parsePrivateKeyFile(c.SSHIdentity)
-		if err != nil {
-			return err
-		}
-		sshConfig.Auth = append(sshConfig.Auth, a)
-	}
-
-	sshClient, err := ssh.Dial("tcp", c.Master + ":22", sshConfig)
+	err := master.AddSSHIdentity(c.SSHIdentity)
 	if err != nil {
-		return fmt.Errorf("error connecting to SSH on server %q: %v", c.Master, err)
+		return err
 	}
 
-	sshSession, err := sshClient.NewSession()
+	conf, err := master.ReadConfiguration()
 	if err != nil {
-		return fmt.Errorf("error creating SSH session: %v", err)
+		return err
 	}
 
-	//output, err := sshSession.CombinedOutput("cat /etc/kubernetes/kube_env.yaml")
-	//if err != nil {
-	//	return fmt.Errorf("error running SSH command: %v", err)
-	//}
-
-	output, err := sshSession.CombinedOutput("curl -s http://169.254.169.254/latest/user-data")
-	if err != nil {
-		return fmt.Errorf("error running SSH command: %v", err)
-	}
-
-	conf := make(map[string]string)
-	for _, line := range strings.Split(string(output), "\n") {
-		sep := strings.Index(line, ": ")
-		k := ""
-		v := ""
-		if sep != -1 {
-			k = line[0:sep]
-			v = line[sep + 2:]
-		}
-
-		if k == "" {
-			glog.V(4).Infof("Unknown line: %s", line)
-		}
-
-		if len(v) >= 2 && v[0] == '"' && v[len(v) - 1] == '"' {
-			v = v[1:len(v) - 1]
-		}
-		conf[k] = v
-	}
-
-	instancePrefix := conf["INSTANCE_PREFIX"]
+	instancePrefix := conf.Settings["INSTANCE_PREFIX"]
 	if instancePrefix == "" {
 		return fmt.Errorf("cannot determine INSTANCE_PREFIX")
 	}
@@ -128,36 +73,50 @@ func (c*CreateKubecfgCmd) Run() error {
 	b.Init()
 	b.Context = "aws_" + instancePrefix
 
-	//glog.Infof("Output: %v", string(output))
-
-	caCertPath, err := confToFile(tmpdir, conf, "CA_CERT")
+	caCertPath := path.Join(tmpdir, "ca.crt")
+	err = downloadFile(master, "/srv/kubernetes/ca.crt", caCertPath)
+	//caCertPath, err := confToFile(tmpdir, conf, "CA_CERT")
 	if err != nil {
 		return err
 	}
 
-	kubecfgCertConfKey := "KUBECFG_CERT"
-	kubecfgKeyConfKey := "KUBECFG_KEY"
-	if c.UseKubeletCert {
-		kubecfgCertConfKey = "KUBELET_CERT"
-		kubecfgKeyConfKey = "KUBELET_KEY"
-	} else {
-		if conf[kubecfgCertConfKey] == "" {
-			fmt.Printf("%s was not found in the configuration; you may want to specify --use-kubelet-cert\n", kubecfgCertConfKey)
-		}
+	//kubecfgCertConfKey := "KUBECFG_CERT"
+	//kubecfgKeyConfKey := "KUBECFG_KEY"
+	//if c.UseKubeletCert {
+	//	kubecfgCertConfKey = "KUBELET_CERT"
+	//	kubecfgKeyConfKey = "KUBELET_KEY"
+	//} else {
+	//	if conf[kubecfgCertConfKey] == "" {
+	//		fmt.Printf("%s was not found in the configuration; you may want to specify --use-kubelet-cert\n", kubecfgCertConfKey)
+	//	}
+	//}
+	//
+
+	kubecfgCertPath := path.Join(tmpdir, "kubecfg.crt")
+	err = downloadFile(master, "/srv/kubernetes/kubecfg.crt", kubecfgCertPath)
+	//caCertPath, err := confToFile(tmpdir, conf, "CA_CERT")
+	if err != nil {
+		return err
+	}
+	kubecfgKeyPath := path.Join(tmpdir, "kubecfg.key")
+	err = downloadFile(master, "/srv/kubernetes/kubecfg.key", kubecfgKeyPath)
+	//caCertPath, err := confToFile(tmpdir, conf, "CA_CERT")
+	if err != nil {
+		return err
 	}
 
-	kubeCertPath, err := confToFile(tmpdir, conf, kubecfgCertConfKey)
-	if err != nil {
-		return err
-	}
-	kubeKeyPath, err := confToFile(tmpdir, conf, kubecfgKeyConfKey)
-	if err != nil {
-		return err
-	}
+	//kubeCertPath, err := confToFile(tmpdir, conf, kubecfgCertConfKey)
+	//if err != nil {
+	//	return err
+	//}
+	//kubeKeyPath, err := confToFile(tmpdir, conf, kubecfgKeyConfKey)
+	//if err != nil {
+	//	return err
+	//}
 
 	b.CACert = caCertPath
-	b.KubeCert = kubeCertPath
-	b.KubeKey = kubeKeyPath
+	b.KubecfgCert = kubecfgCertPath
+	b.KubecfgKey = kubecfgKeyPath
 	b.KubeMasterIP = c.Master
 
 	err = b.CreateKubeconfig()
@@ -168,26 +127,26 @@ func (c*CreateKubecfgCmd) Run() error {
 	return nil
 }
 
-func confToFile(tmpdir string, conf map[string]string, key string) (string, error) {
-	v, found := conf[key]
-	if !found {
-		return "", fmt.Errorf("cannot find configuration value for %q", key)
-	}
 
-	if v == "" {
-		return "", fmt.Errorf("configuration value for %q was unexpectedly empty", key)
-	}
-
-	b, err := base64.StdEncoding.DecodeString(v)
+func downloadFile(master *kutil.NodeSSH, remotePath string, localPath string) (error) {
+	b, err := master.ReadFile(remotePath)
 	if err != nil {
-		return "", fmt.Errorf("configuration value was not base64-encoded for %s", key)
+		return err
 	}
 
-	p := path.Join(tmpdir, key)
-	err = ioutil.WriteFile(p, b, 0700)
+	if len(b) == 0 {
+		return fmt.Errorf("remote file  %q was unexpectedly empty", remotePath)
+	}
+
+	err = os.MkdirAll(path.Dir(localPath), 0700)
 	if err != nil {
-		return "", fmt.Errorf("error writing configuration value to file %q: %v", p, err)
+		return fmt.Errorf("error creating directories for path %q: %v", path.Dir(localPath), err)
 	}
 
-	return p, nil
+	err = ioutil.WriteFile(localPath, b, 0700)
+	if err != nil {
+		return fmt.Errorf("error writing to file %q: %v", localPath, err)
+	}
+
+	return nil
 }

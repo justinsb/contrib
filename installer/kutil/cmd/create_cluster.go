@@ -15,6 +15,7 @@ type CreateClusterCmd struct {
 	ClusterID string
 	S3Bucket  string
 	S3Region  string
+	SSHKey    string
 }
 
 var createCluster CreateClusterCmd
@@ -36,6 +37,7 @@ func init() {
 
 	cmd.Flags().StringVar(&createCluster.S3Region, "s3-region", "", "Region in which to create the S3 bucket (if it does not exist)")
 	cmd.Flags().StringVar(&createCluster.S3Bucket, "s3-bucket", "", "S3 bucket for upload of artifacts")
+	cmd.Flags().StringVar(&createCluster.SSHKey, "i", "", "SSH Key for cluster")
 
 	cmd.Flags().StringVar(&createCluster.ClusterID, "cluster-id", "", "cluster id")
 }
@@ -46,7 +48,16 @@ func (c*CreateClusterCmd) Run() error {
 
 	k.ClusterID = c.ClusterID
 
+	if c.SSHKey != "" {
+		k.SSHKey = fi.NewFileResource(c.SSHKey)
+	}
+
 	// TODO: load config file
+
+	if k.SSHKey == nil {
+		// TODO: Implement the generation logic
+		return fmt.Errorf("ssh key is required (for now!).  Specify with -i")
+	}
 
 	az := k.Zone
 	if len(az) <= 2 {

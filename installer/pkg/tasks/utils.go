@@ -140,6 +140,17 @@ func Bool(v bool) *bool {
 	return &v
 }
 
+func BoolValue(v *bool) bool {
+	if v == nil {
+		return false
+	}
+	return *v
+}
+
+func Int(v int) *int {
+	return &v
+}
+
 func Int64(v int64) *int64 {
 	return &v
 }

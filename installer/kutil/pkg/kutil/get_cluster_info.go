@@ -30,7 +30,7 @@ func (c*GetClusterInfo)  GetClusterInfo() (*ClusterInfo, error) {
 	glog.V(2).Infof("Listing all EC2 instances matching cluster tags")
 	var filters []*ec2.Filter
 	filters = append(filters, fi.NewEC2Filter("tag:" + TagKubernetesClusterID, c.ClusterID))
-	filters = append(filters, fi.NewEC2Filter("tag:" + TagRole, "master"))
+	filters = append(filters, fi.NewEC2Filter("tag:" + TagRole, "master", "kubernetes-master"))
 	request := &ec2.DescribeInstancesInput{
 		Filters: filters,
 	}

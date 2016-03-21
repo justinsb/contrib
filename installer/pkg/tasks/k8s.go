@@ -13,6 +13,10 @@ import (
 	"encoding/base64"
 )
 
+const (
+	DefaultMasterVolumeSize = 20
+)
+
 type K8s struct {
 	fi.SimpleUnit
 
@@ -32,7 +36,7 @@ type K8s struct {
 	MasterInternalIP              string
 	// TODO: Just move to master volume?
 	MasterVolume                  string
-	MasterVolumeSize              int
+	MasterVolumeSize              *int
 	MasterVolumeType              string
 	MasterCIDR                    string
 
@@ -63,9 +67,9 @@ type K8s struct {
 	LoggingDestination            string
 	ElasticsearchLoggingReplicas  int
 
-	EnableClusterRegistry         bool
-	ClusterRegistryDisk           string
-	ClusterRegistryDiskSize       int
+	EnableClusterRegistry         *bool
+	ClusterRegistryDisk           *string
+	ClusterRegistryDiskSize       *int
 
 	EnableClusterDNS              bool
 	DNSReplicas                   int
@@ -86,12 +90,12 @@ type K8s struct {
 	KubecfgCert                   fi.Resource
 	KubecfgKey                    fi.Resource
 
-	RegisterMasterKubelet         bool
+	RegisterMasterKubelet         *bool
 	//KubeletApiserver              string
 
-	EnableManifestURL             bool
-	ManifestURL                   string
-	ManifestURLHeader             string
+	EnableManifestURL             *bool
+	ManifestURL                   *string
+	ManifestURLHeader             *string
 
 	NetworkProvider               string
 
@@ -105,7 +109,7 @@ type K8s struct {
 	KubeDockerRegistry            string
 	KubeAddonRegistry             string
 
-	Multizone                     bool
+	Multizone                     *bool
 
 	NonMasqueradeCidr             string
 
@@ -115,11 +119,11 @@ type K8s struct {
 
 	AdmissionControl              string
 
-	KubeletPort                   int
+	KubeletPort                   *int
 
-	KubeApiserverRequestTimeout   int
+	KubeApiserverRequestTimeout   *int
 
-	TerminatedPodGcThreshold      string
+	TerminatedPodGcThreshold      *string
 
 	KubeManifestsTarURL           string
 	KubeManifestsTarSha256        string
@@ -156,6 +160,8 @@ type K8s struct {
 	KubernetesConfigureCbr0       string
 
 	EnableCustomMetrics           bool
+
+	SSHKey                        fi.Resource
 }
 
 func (k*K8s) Key() string {
@@ -205,9 +211,15 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 	y["LOGGING_DESTINATION"] = k.LoggingDestination
 	y["ELASTICSEARCH_LOGGING_REPLICAS"] = strconv.Itoa(k.ElasticsearchLoggingReplicas)
 	y["ENABLE_CLUSTER_DNS"] = strconv.FormatBool(k.EnableClusterDNS)
-	y["ENABLE_CLUSTER_REGISTRY"] = strconv.FormatBool(k.EnableClusterRegistry)
-	y["CLUSTER_REGISTRY_DISK"] = k.ClusterRegistryDisk
-	y["CLUSTER_REGISTRY_DISK_SIZE"] = strconv.Itoa(k.ClusterRegistryDiskSize)
+	if k.EnableClusterRegistry != nil {
+		y["ENABLE_CLUSTER_REGISTRY"] = strconv.FormatBool(*k.EnableClusterRegistry)
+	}
+	if k.ClusterRegistryDisk != nil {
+		y["CLUSTER_REGISTRY_DISK"] = *k.ClusterRegistryDisk
+	}
+	if k.ClusterRegistryDiskSize != nil {
+		y["CLUSTER_REGISTRY_DISK_SIZE"] = strconv.Itoa(*k.ClusterRegistryDiskSize)
+	}
 	y["DNS_REPLICAS"] = strconv.Itoa(k.DNSReplicas)
 	y["DNS_SERVER_IP"] = k.DNSServerIP
 	y["DNS_DOMAIN"] = k.DNSDomain
@@ -229,21 +241,21 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 	y["KUBE_IMAGE_TAG"] = k.KubeImageTag
 	y["KUBE_DOCKER_REGISTRY"] = k.KubeDockerRegistry
 	y["KUBE_ADDON_REGISTRY"] = k.KubeAddonRegistry
-	if k.Multizone {
+	if BoolValue(k.Multizone) {
 		y["MULTIZONE"] = "1"
 	}
 	y["NON_MASQUERADE_CIDR"] = k.NonMasqueradeCidr
 
-	if k.KubeletPort != 0 {
-		y["KUBELET_PORT"] = strconv.Itoa(k.KubeletPort)
+	if k.KubeletPort != nil {
+		y["KUBELET_PORT"] = strconv.Itoa(*k.KubeletPort)
 	}
 
-	if k.KubeApiserverRequestTimeout != 0 {
-		y["KUBE_APISERVER_REQUEST_TIMEOUT"] = strconv.Itoa(k.KubeApiserverRequestTimeout)
+	if k.KubeApiserverRequestTimeout != nil {
+		y["KUBE_APISERVER_REQUEST_TIMEOUT"] = strconv.Itoa(*k.KubeApiserverRequestTimeout)
 	}
 
-	if k.TerminatedPodGcThreshold != "" {
-		y["TERMINATED_POD_GC_THRESHOLD"] = k.TerminatedPodGcThreshold
+	if k.TerminatedPodGcThreshold != nil {
+		y["TERMINATED_POD_GC_THRESHOLD"] = *k.TerminatedPodGcThreshold
 	}
 
 	if k.OsDistribution == "trusty" {
@@ -274,7 +286,7 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 	if isMaster {
 		// If the user requested that the master be part of the cluster, set the
 		// environment variable to program the master kubelet to register itself.
-		if k.RegisterMasterKubelet {
+		if BoolValue(k.RegisterMasterKubelet) {
 			y["KUBELET_APISERVER"] = k.MasterName
 		}
 
@@ -287,9 +299,15 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 		y["KUBECFG_CERT"] = ResourceAsBase64String(k.KubecfgCert)
 		y["KUBECFG_KEY"] = ResourceAsBase64String(k.KubecfgKey)
 
-		y["ENABLE_MANIFEST_URL"] = strconv.FormatBool(k.EnableManifestURL)
-		y["MANIFEST_URL"] = k.ManifestURL
-		y["MANIFEST_URL_HEADER"] = k.ManifestURLHeader
+		if k.EnableManifestURL != nil {
+			y["ENABLE_MANIFEST_URL"] = strconv.FormatBool(*k.EnableManifestURL)
+		}
+		if k.ManifestURL != nil {
+			y["MANIFEST_URL"] = *k.ManifestURL
+		}
+		if k.ManifestURLHeader != nil {
+			y["MANIFEST_URL_HEADER"] = *k.ManifestURLHeader
+		}
 		y["NUM_NODES"] = strconv.Itoa(k.NodeCount)
 
 		if k.ApiserverTestArgs != "" {
@@ -324,7 +342,9 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 		y["KUBERNETES_MASTER"] = strconv.FormatBool(false)
 		y["ZONE"] = k.Zone
 		y["EXTRA_DOCKER_OPTS"] = k.ExtraDockerOpts
-		y["MANIFEST_URL"] = k.ManifestURL
+		if k.ManifestURL != nil {
+			y["MANIFEST_URL"] = *k.ManifestURL
+		}
 
 		if k.KubeProxyTestArgs != "" {
 			y["KUBEPROXY_TEST_ARGS"] = k.KubeProxyTestArgs
@@ -366,7 +386,7 @@ func (k*K8s) Init() {
 	k.DockerStorage = "aufs"
 	k.MasterIPRange = "10.246.0.0/24"
 	k.MasterVolumeType = "gp2"
-	k.MasterVolumeSize = 20
+	k.MasterVolumeSize = Int(DefaultMasterVolumeSize)
 	k.Zone = "us-east-1b"
 	k.EnableClusterUI = true
 	k.EnableClusterDNS = true
@@ -497,9 +517,13 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	//k.SaltTarHash = s3SaltFile.Hash()
 	//k.BootstrapScriptURL = s3BootstrapScriptFile.PublicURL()
 
+	masterVolumeSize := DefaultMasterVolumeSize
+	if k.MasterVolumeSize != nil {
+		masterVolumeSize = *k.MasterVolumeSize
+	}
 	masterPV := &PersistentVolume{
 		AvailabilityZone:         String(k.Zone),
-		Size:       Int64(int64(k.MasterVolumeSize)),
+		Size:       Int64(int64(masterVolumeSize)),
 		VolumeType: String(k.MasterVolumeType),
 		Name:    String(clusterID + "-master-pd"),
 	}
@@ -569,7 +593,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(iamNodeInstanceProfileRole)
 
-	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: fi.NewFileResource("~/.ssh/id_rsa.pub")}
+	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: k.SSHKey}
 	c.Add(sshKey)
 
 	vpc := &VPC{
@@ -579,6 +603,20 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		EnableDNSHostnames:Bool(true),
 	}
 	c.Add(vpc)
+
+	region := c.Cloud().(*fi.AWSCloud).Region
+	dhcpDomainName := region + ".compute.internal"
+	if region == "us-east-1" {
+		dhcpDomainName = "ec2.internal"
+	}
+	dhcpOptions := &DHCPOptions{
+		Name: String("kubernetes-" + clusterID),
+		DomainName: String(dhcpDomainName),
+		DomainNameServers: String("AmazonProvidedDNS"),
+	}
+	c.Add(dhcpOptions)
+
+	c.Add(&VPCDHCPOptionsAssociation{VPC: vpc, DHCPOptions: dhcpOptions })
 
 	subnet := &Subnet{VPC: vpc, AvailabilityZone: String(k.Zone), CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID)}
 	c.Add(subnet)

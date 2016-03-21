@@ -22,8 +22,8 @@ type KubeconfigBuilder struct {
 	KubePassword    string
 
 	CACert          string
-	KubeCert        string
-	KubeKey         string
+	KubecfgCert        string
+	KubecfgKey         string
 }
 
 func (c*KubeconfigBuilder) Init() {
@@ -88,9 +88,9 @@ func (c*KubeconfigBuilder)  CreateKubeconfig() error {
 		userArgs = append(userArgs, "--password=" + c.KubePassword)
 	}
 
-	if c.KubeCert != "" && c.KubeKey != "" {
-		userArgs = append(userArgs, "--client-certificate=" + c.KubeCert)
-		userArgs = append(userArgs, "--client-key=" + c.KubeKey)
+	if c.KubecfgCert != "" && c.KubecfgKey != "" {
+		userArgs = append(userArgs, "--client-certificate=" + c.KubecfgCert)
+		userArgs = append(userArgs, "--client-key=" + c.KubecfgKey)
 		userArgs = append(userArgs, "--embed-certs=true")
 	}
 

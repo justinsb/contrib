@@ -90,7 +90,6 @@ func (c*GetClusterCmd) Run() error {
 			continue
 		}
 		fmt.Printf("%v\t%v\t%v\n", info.ClusterID, info.MasterIP, info.Zone)
-
 	}
 	return nil
 }

@@ -1,12 +1,30 @@
-P0
+Verify
+
+DHCP option set
 
 Fix SSH key
 
-DHCP option set
+
+P0
+
+Export config from a 1.2 cluster
+
+Export config from a 1.1 cluster
+
+Follow volume tag to get IP address to delete
+
+All k8s variables should be pointers
+
+P1
+
+Delete the other types: vpc, route-table, internet-gateway
 
 =======================================================
 
 P2
+
+Export config from a 1.0 cluster?
+
 
 Need to add the elastic IP to the list of SANs... tricky interdependencies...
 
