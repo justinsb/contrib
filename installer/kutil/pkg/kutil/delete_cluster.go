@@ -363,14 +363,28 @@ type DeletableInternetGateway struct {
 func (r*DeletableInternetGateway) Delete(cloud fi.Cloud) error {
 	c := cloud.(*fi.AWSCloud)
 
-	glog.V(2).Infof("Deleting EC2 InternetGateway %q", r.ID)
-	request := &ec2.DeleteInternetGatewayInput{
-		InternetGatewayId: &r.ID,
+	{
+		glog.V(2).Infof("Detaching EC2 InternetGateway %q", r.ID)
+		request := &ec2.DetachInternetGatewayInput{
+			InternetGatewayId: &r.ID,
+		}
+		_, err := c.EC2.DetachInternetGateway(request)
+		if err != nil {
+			return fmt.Errorf("error detaching InternetGateway %q: %v", r.ID, err)
+		}
 	}
-	_, err := c.EC2.DeleteInternetGateway(request)
-	if err != nil {
-		return fmt.Errorf("error deleting InternetGateway %q: %v", r.ID, err)
+
+	{
+		glog.V(2).Infof("Deleting EC2 InternetGateway %q", r.ID)
+		request := &ec2.DeleteInternetGatewayInput{
+			InternetGatewayId: &r.ID,
+		}
+		_, err := c.EC2.DeleteInternetGateway(request)
+		if err != nil {
+			return fmt.Errorf("error deleting InternetGateway %q: %v", r.ID, err)
+		}
 	}
+
 	return nil
 }
 func (r*DeletableInternetGateway) String() string {
