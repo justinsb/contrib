@@ -363,10 +363,29 @@ type DeletableInternetGateway struct {
 func (r*DeletableInternetGateway) Delete(cloud fi.Cloud) error {
 	c := cloud.(*fi.AWSCloud)
 
+	var igw *ec2.InternetGateway
 	{
+		request := &ec2.DescribeInternetGatewaysInput{
+			InternetGatewayIds: []*string{&r.ID},
+		}
+		response, err := c.EC2.DescribeInternetGateways(request)
+		if err != nil {
+			return fmt.Errorf("error describing InternetGateway %q: %v", r.ID, err)
+		}
+		if response == nil || len(response.InternetGateways) == 0 {
+			return nil
+		}
+		if len(response.InternetGateways) != 1 {
+			return fmt.Errorf("found multiple InternetGateways with id %q", r.ID)
+		}
+		igw = response.InternetGateways[0]
+	}
+
+	for _, a := range igw.Attachments {
 		glog.V(2).Infof("Detaching EC2 InternetGateway %q", r.ID)
 		request := &ec2.DetachInternetGatewayInput{
 			InternetGatewayId: &r.ID,
+			VpcId: a.VpcId,
 		}
 		_, err := c.EC2.DetachInternetGateway(request)
 		if err != nil {
