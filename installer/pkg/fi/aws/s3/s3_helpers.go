@@ -220,7 +220,6 @@ func (o*S3Object) IsPublic() (bool, error) {
 		}
 		grantee := aws.StringValue(grant.Grantee.URI)
 		permission := aws.StringValue(grant.Permission)
-		glog.Infof("permission:%q grant:%q", permission, grantee)
 		if permission != "READ" {
 			continue
 		}

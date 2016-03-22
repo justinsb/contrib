@@ -114,6 +114,10 @@ func (e *AutoscalingGroup) Run(c *fi.RunContext) error {
 		return err
 	}
 
+	aData, _ := fi.ResourceAsString(a.UserData)
+	glog.Infof("A %s", aData)
+	eData, _ := fi.ResourceAsString(e.UserData)
+	glog.Infof("E %s", eData)
 	changes := &AutoscalingGroup{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {

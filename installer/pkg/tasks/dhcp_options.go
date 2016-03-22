@@ -37,9 +37,11 @@ func (s *DHCPOptions) String() string {
 func (e *DHCPOptions) find(c *fi.RunContext) (*DHCPOptions, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	filters := cloud.BuildFilters(e.Name)
-	request := &ec2.DescribeDhcpOptionsInput{
-		Filters: filters,
+	request := &ec2.DescribeDhcpOptionsInput{}
+	if e.ID != nil {
+		request.DhcpOptionsIds = []*string{e.ID }
+	} else {
+		request.Filters = cloud.BuildFilters(e.Name)
 	}
 
 	response, err := cloud.EC2.DescribeDhcpOptions(request)

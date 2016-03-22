@@ -169,6 +169,8 @@ type K8s struct {
 	VPCID                         *string
 	InternetGatewayID             *string
 	RouteTableID                  *string
+	DHCPOptionsID                 *string
+	MasterElasticIP               *string
 }
 
 func (k*K8s) Key() string {
@@ -566,6 +568,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	c.Add(masterPV)
 
 	masterIP := &ElasticIP{
+		PublicIP: k.MasterElasticIP,
 		TagOnResource: masterPV,
 		TagUsingKey: String("kubernetes.io/master-ip"),
 	}
@@ -647,6 +650,7 @@ func (k *K8s) Add(c *fi.BuildContext) {
 		dhcpDomainName = "ec2.internal"
 	}
 	dhcpOptions := &DHCPOptions{
+		ID: k.DHCPOptionsID,
 		Name: String("kubernetes-" + clusterID),
 		DomainName: String(dhcpDomainName),
 		DomainNameServers: String("AmazonProvidedDNS"),
@@ -739,7 +743,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 
 	c.Add(&InstanceElasticIPAttachment{Instance:masterInstance, ElasticIP: masterIP})
 	c.Add(&InstanceVolumeAttachment{Instance:masterInstance, Volume: masterPV, Device: String("/dev/sdb")})
-
 
 	nodeGroup := &AutoscalingGroup{
 		Name:                String(clusterID + "-minion-group"),

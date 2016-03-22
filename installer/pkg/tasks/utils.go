@@ -88,9 +88,9 @@ func equalFieldValues(a, e reflect.Value) bool {
 			if ok {
 				same, err := fi.ResourcesMatch(aResource, eResource)
 				if err != nil {
-					glog.Warningf("error while comparing resources: %v", err)
+					glog.Fatalf("error while comparing resources: %v", err)
 				} else {
-					glog.Infof("resources match: %v", same)
+					glog.Infof("RESOURCE COMPARISON %v", same)
 					return same
 				}
 			}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"github.com/golang/glog"
+"k8s.io/contrib/installer/pkg/tasks"
+	"encoding/base64"
 )
 
 type NodeSSH struct {
@@ -70,11 +72,27 @@ func (m*NodeSSH) ReadConfiguration() (*MasterConfiguration, error) {
 	//if err != nil {
 	//	return fmt.Errorf("error running SSH command: %v", err)
 	//}
-	outputBytes, err := sshSession.CombinedOutput("curl -s http://169.254.169.254/latest/user-data")
+	outputBytes, err := sshSession.Output("/bin/bash -c 'curl -s http://169.254.169.254/latest/user-data | base64'")
 	if err != nil {
 		return nil, fmt.Errorf("error running SSH command: %v", err)
 	}
 
+	//glog.Infof("User data: %v", string(outputBytes))
+
+	outputBytes, err = base64.StdEncoding.DecodeString(string(outputBytes))
+	if err != nil {
+		return nil, fmt.Errorf("error decoding base64 user-data")
+	}
+
+	if len(outputBytes) > 2 && outputBytes[0] == 31 && outputBytes[1] == 139 {
+		// GZIP
+		glog.V(2).Infof("gzip data detected; will decompress")
+
+		outputBytes, err = tasks.GunzipBytes(outputBytes)
+		if err != nil {
+			return nil, fmt.Errorf("error decompressing user data: %v", err)
+		}
+	}
 	settings := make(map[string]string)
 
 	output := string(outputBytes)

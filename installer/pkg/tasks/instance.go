@@ -8,7 +8,12 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
 	"encoding/base64"
+	"compress/gzip"
+	"bytes"
+	"io"
 )
+
+const MaxUserDataSize = 16384
 
 type InstanceRenderer interface {
 	RenderInstance(actual, expected, changes *Instance) error
@@ -19,7 +24,7 @@ type Instance struct {
 
 	ID               *string
 	InstanceCommonConfig
-	UserData            fi.Resource
+	UserData         fi.Resource
 
 	Subnet           *Subnet
 	PrivateIPAddress *string
@@ -164,6 +169,12 @@ func (t *AWSAPITarget) RenderInstance(a, e, changes *Instance) error {
 			if err != nil {
 				return fmt.Errorf("error rendering Instance UserData: %v", err)
 			}
+			if len(d) > MaxUserDataSize {
+				d, err = GzipBytes(d)
+				if err != nil {
+					return fmt.Errorf("error while gzipping UserData: %v", err)
+				}
+			}
 			request.UserData = aws.String(base64.StdEncoding.EncodeToString(d))
 		}
 		if e.IAMInstanceProfile != nil {
@@ -192,7 +203,18 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 		args = append(args, e.buildEC2CreateArgs(t)...)
 
 		if e.UserData != nil {
-			tempFile, err := t.AddLocalResource(e.UserData)
+			d, err := fi.ResourceAsBytes(e.UserData)
+			if err != nil {
+				return fmt.Errorf("error rendering Instance UserData: %v", err)
+			}
+			if len(d) > MaxUserDataSize {
+				d, err = GzipBytes(d)
+				if err != nil {
+					return fmt.Errorf("error while gzipping UserData: %v", err)
+				}
+			}
+
+			tempFile, err := t.AddLocalResource(fi.NewBytesResource(d))
 			if err != nil {
 				glog.Fatalf("error adding resource: %v", err)
 			}
@@ -234,3 +256,33 @@ func (i *Instance) Destroy(cloud *AWSCloud, output *BashTarget) error {
 	return nil
 }
 */
+
+
+func GzipBytes(d []byte) ([]byte, error) {
+	var out bytes.Buffer
+	w := gzip.NewWriter(&out)
+	_, err := w.Write(d)
+	if err != nil {
+		return nil, fmt.Errorf("error compressing data: %v", err)
+	}
+	err = w.Close()
+	if err != nil {
+		return nil, fmt.Errorf("error compressing data: %v", err)
+	}
+	return out.Bytes(), nil
+}
+
+func GunzipBytes(d []byte) ([]byte, error) {
+	var out bytes.Buffer
+	in := bytes.NewReader(d)
+	r, err := gzip.NewReader(in)
+	if err != nil {
+		return nil, fmt.Errorf("error building gunzip reader: %v", err)
+	}
+	defer r.Close()
+	_, err = io.Copy(&out, r)
+	if err != nil {
+		return nil, fmt.Errorf("error decompressing data: %v", err)
+	}
+	return out.Bytes(), nil
+}

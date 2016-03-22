@@ -62,7 +62,7 @@ func ResourcesMatch(a, b Resource) (bool, error) {
 	}
 	defer SafeClose(aReader)
 
-	bReader, err := a.Open()
+	bReader, err := b.Open()
 	if err != nil {
 		return false, err
 	}

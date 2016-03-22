@@ -71,15 +71,11 @@ func (e *ElasticIP) find(c *fi.RunContext) (*ElasticIP, error) {
 	}
 
 	if publicIP != nil || allocationID != nil {
-		var filters []*ec2.Filter
-		if publicIP != nil {
-			filters = append(filters, fi.NewEC2Filter("public-ip", *publicIP))
-		}
-		request := &ec2.DescribeAddressesInput{
-			Filters: filters,
-		}
+		request := &ec2.DescribeAddressesInput{}
 		if allocationID != nil {
 			request.AllocationIds = []*string{allocationID}
+		} else if publicIP != nil {
+			request.Filters = []*ec2.Filter{fi.NewEC2Filter("public-ip", *publicIP) }
 		}
 
 		response, err := cloud.EC2.DescribeAddresses(request)

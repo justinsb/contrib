@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"k8s.io/contrib/installer/pkg/fi"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 )
 
 type ExportClusterCmd struct {
@@ -90,6 +91,12 @@ func (c*ExportClusterCmd) Run() error {
 	k8s := &tasks.K8s{}
 	k8s.CloudProvider = "aws"
 	k8s.ClusterID = instancePrefix
+
+	masterInstanceID, err := master.GetMetadata("instance-id")
+	if err != nil {
+		return fmt.Errorf("cannot determine master instance id: %v", err)
+	}
+
 	k8s.MasterInstanceType, err = master.InstanceType()
 	if err != nil {
 		return fmt.Errorf("cannot determine master instance type: %v", err)
@@ -181,6 +188,26 @@ func (c*ExportClusterCmd) Run() error {
 	tags := map[string]string{"KubernetesCluster": k8s.ClusterID}
 	cloud := fi.NewAWSCloud(region, tags)
 
+	masterInstance, err := cloud.DescribeInstance(masterInstanceID)
+	if err != nil {
+		return err
+	}
+	if masterInstance.PublicIpAddress != nil {
+		eip, err := findElasticIP(cloud, *masterInstance.PublicIpAddress)
+		if err != nil {
+			return err
+		}
+		if eip != nil {
+			k8s.MasterElasticIP = masterInstance.PublicIpAddress
+		}
+	}
+
+	vpc, err := cloud.DescribeVPC(*k8s.VPCID)
+	if err != nil {
+		return err
+	}
+	k8s.DHCPOptionsID = vpc.DhcpOptionsId
+
 	igw, err := findInternetGateway(cloud, *k8s.VPCID)
 	if err != nil {
 		return err
@@ -208,12 +235,23 @@ func (c*ExportClusterCmd) Run() error {
 		return err
 	}
 
-	kubecfgCertPath := path.Join(c.DestDir, "pki/issued/cn=kubernetes-master.crt")
+	kubeMasterCertPath := path.Join(c.DestDir, "pki/issued/cn=kubernetes-master.crt")
+	err = downloadFile(master, "/srv/kubernetes/server.cert", kubeMasterCertPath)
+	if err != nil {
+		return err
+	}
+	kubeMasterKeyPath := path.Join(c.DestDir, "pki/private/cn=kubernetes-master.key")
+	err = downloadFile(master, "/srv/kubernetes/server.key", kubeMasterKeyPath)
+	if err != nil {
+		return err
+	}
+
+	kubecfgCertPath := path.Join(c.DestDir, "pki/issued/cn=kubecfg.crt")
 	err = downloadFile(master, "/srv/kubernetes/kubecfg.crt", kubecfgCertPath)
 	if err != nil {
 		return err
 	}
-	kubecfgKeyPath := path.Join(c.DestDir, "pki/private/cn=kubernetes-master.key")
+	kubecfgKeyPath := path.Join(c.DestDir, "pki/private/cn=kubecfg.key")
 	err = downloadFile(master, "/srv/kubernetes/kubecfg.key", kubecfgKeyPath)
 	if err != nil {
 		return err
@@ -336,4 +374,28 @@ func findRouteTable(cloud *fi.AWSCloud, subnetID string) (*ec2.RouteTable, error
 	}
 	rt := response.RouteTables[0]
 	return rt, nil
+}
+
+func findElasticIP(cloud*fi.AWSCloud, publicIP string) (*ec2.Address, error) {
+	request := &ec2.DescribeAddressesInput{
+		PublicIps: []*string{&publicIP},
+	}
+
+	response, err := cloud.EC2.DescribeAddresses(request)
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == "InvalidAddress.NotFound" {
+				return nil, nil
+			}
+		}
+		return nil, fmt.Errorf("error listing Addresses: %v", err)
+	}
+	if response == nil || len(response.Addresses) == 0 {
+		return nil, nil
+	}
+
+	if len(response.Addresses) != 1 {
+		return nil, fmt.Errorf("found multiple Addresses matching IP %q", publicIP)
+	}
+	return response.Addresses[0], nil
 }

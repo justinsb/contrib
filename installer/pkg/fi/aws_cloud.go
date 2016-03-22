@@ -172,7 +172,7 @@ func (c *AWSCloud) EnvVars() map[string]string {
 }
 
 func (t *AWSCloud) DescribeInstance(instanceID string) (*ec2.Instance, error) {
-	glog.V(2).Infof("Calilng DescribeInstances for instance %q", instanceID)
+	glog.V(2).Infof("Calling DescribeInstances for instance %q", instanceID)
 	request := &ec2.DescribeInstancesInput{
 		InstanceIds: []*string{&instanceID},
 	}

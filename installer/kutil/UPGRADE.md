@@ -3,23 +3,29 @@ To upgrade from 1.1 to 1.2
 
 go install k8s.io/contrib/installer/kutil
 
-# Set the ZONE env var to the zone where your cluster is
-ZONE=us-east-1c
+# Set the REGION env var to the region where your cluster is
+REGION=us-west-2
 
-# Set bucket to the name of your S3 bucket for artifacts
-BUCKET=<somes3bucket>
-
-# List all the clusters in ${ZONE}
-kutil get cluster --zone ${ZONE}
+# List all the clusters in ${REGION}
+> kutil discover clusters --region ${REGION}
+kubernetes	52.27.60.160	us-west-2a
 
 # The first column is your cluster ID (likely `kubernetes`)
 # The second column is your master IP, and should match the output of `kubectl cluster-info`
+# The third column is your zone
+
+# Set the MASTER_IP & ZONE env vars to match your cluster (as discovered above)
+MASTER_IP=52.27.60.160
+ZONE=us-west-2a
 
 # You will also need the IP address of one of your nodes
-kubectl get nodes -ojson
-# Extract out one of the 'ExternalIP' values
+kubectl get nodes -ojson | grep -A1 ExternalIP
 
-kutil export cluster --master 52.201.246.236 -i ~/.ssh/kube_aws_rsa --logtostderr --node 52.90.58.244 --dest upgrade11/
+# Extract out one of the 'ExternalIP' values
+NODE_IP=1.2.3.4
+
+# Extract the configuration and keys from your existing cluster
+kutil export cluster --master ${MASTER_IP} -i ${ssh_key} --logtostderr --node ${NODE_IP} --dest upgrade11/
 
 # This should have extracted keys & configuration from the running cluster:
 find upgrade11/
@@ -29,9 +35,11 @@ upgrade11/pki
 upgrade11/pki/ca.crt
 upgrade11/pki/issued
 upgrade11/pki/issued/cn=kubernetes-master.crt
+upgrade11/pki/issued/cn=kubecfg.crt
 upgrade11/pki/issued/cn=kubelet.crt
 upgrade11/pki/private
 upgrade11/pki/private/cn=kubernetes-master.key
+upgrade11/pki/private/cn=kubecfg.key
 upgrade11/pki/private/cn=kubelet.key
 upgrade11/kubernetes.yaml
 
@@ -66,88 +74,128 @@ RouteTableID: rtb-2c1dc94b
 ServiceClusterIPRange: 10.0.0.0/16
 SubnetID: subnet-d32547a5
 VPCID: vpc-d9080cbd
-Zone: us-east-1c
+Zone: us-west-2a
 
-# Download the kubernetes install that you are going to install
+# Download the kubernetes version that you are going to install
 release=v1.2.0
 mkdir release-${release}
 wget https://storage.googleapis.com/kubernetes-release/release/${release}/kubernetes.tar.gz -O release-${release}/kubernetes.tar.gz
 tar zxf  release-${release}/kubernetes.tar.gz -C  release-${release}
 
+# See what changes will be made if we apply the cluster changes
+ssh_key=~/.ssh/kube_aws_rsa
+kutil create cluster -i ${ssh_key} -d upgrade11/ -r release-${release}/kubernetes/ --logtostderr --s3-bucket ${BUCKET} -t bash
 
-kutil create cluster -i ~/.ssh/id_rsa -d upgrade11/ -r release-${release}/kubernetes/ --logtostderr --s3-bucket ${BUCKET} -t bash
+You should see something like this:
 
-Should output a bash script that could be used to reconfigure the cluster:
-(note that it doesn't currently enforce the image change for the 1.2 uprgade):
-
+```
 #!/bin/bash
 set -ex
 
 . ./helpers
 
-export AWS_DEFAULT_REGION="us-east-1"
+export AWS_DEFAULT_REGION="us-west-2"
 export AWS_DEFAULT_OUTPUT="text"
-PERSISTENTVOLUME_1="vol-884ebb20"
-ELASTICIP_1="eipalloc-3fe11c58"
+PERSISTENTVOLUME_1="vol-f8adc40e"
+ELASTICIP_1=`aws ec2 allocate-address --domain vpc --query AllocationId`
+ELASTICIP_1_PUBLICIP=`aws ec2 describe-addresses --allocation-ids ${ELASTICIP_1} --query Addresses[].PublicIp`
+add-tag ${PERSISTENTVOLUME_1} kubernetes.io/master-ip ${ELASTICIP_1_PUBLICIP}
 IAMROLE_1="AROAILHQRUIC4GMMJFPZS"
 IAMROLE_2="AROAJQYAOWIFBGC7M4J64"
-VPC_1="vpc-d9080cbd"
+aws ec2 import-key-pair --key-name kubernetes-kubernetes --public-key-material file://resources/StringResource_1
+VPC_1="vpc-a6d017c2"
 add-tag ${VPC_1} "Name" "kubernetes-kubernetes"
-DHCPOPTIONS_1="dopt-f7f9a592"
-SUBNET_1="subnet-d32547a5"
+DHCPOPTIONS_1="dopt-54021936"
+add-tag ${DHCPOPTIONS_1} "Name" "kubernetes-kubernetes"
+add-tag ${DHCPOPTIONS_1} "KubernetesCluster" "kubernetes"
+SUBNET_1="subnet-7fac621b"
 add-tag ${SUBNET_1} "Name" "kubernetes-kubernetes"
-INTERNETGATEWAY_1="igw-db10afbf"
+INTERNETGATEWAY_1="igw-91c2e7f4"
 add-tag ${INTERNETGATEWAY_1} "Name" "kubernetes-kubernetes"
 add-tag ${INTERNETGATEWAY_1} "KubernetesCluster" "kubernetes"
-ROUTETABLE_1="rtb-2c1dc94b"
+ROUTETABLE_1="rtb-327ed956"
 add-tag ${ROUTETABLE_1} "Name" "kubernetes-kubernetes"
-ROUTETABLEASSOCIATION_1="rtbassoc-7eab9719"
-SECURITYGROUP_1="sg-d1bb23a9"
+ROUTETABLEASSOCIATION_1="rtbassoc-249ae840"
+SECURITYGROUP_1="sg-d4debeb3"
 add-tag ${SECURITYGROUP_1} "Name" "kubernetes-master-kubernetes"
-SECURITYGROUP_2="sg-d5bb23ad"
+SECURITYGROUP_2="sg-dfdebeb8"
 add-tag ${SECURITYGROUP_2} "Name" "kubernetes-minion-kubernetes"
-INSTANCE_1="i-434d1ec7"
+INSTANCE_1="i-8d247c4a"
 add-tag ${INSTANCE_1} "Role" "master"
+wait-for-instance-state ${INSTANCE_1} running
+aws ec2 associate-address --allocation-id ${ELASTICIP_1} --instance-id ${INSTANCE_1}
 
+```
 
-There should be nothing other than tags in the bash scripts output.  If there is, stop and open an issue!
+Mostly we are adding missing tags, but we are also creating an elastic ip if there isn't
+one key created.  And we're also importing a public key.  (We really should relaunch the
+instances because the image has changes, but the tool doesn't yet detect an out of date AMI,
+though that is helping us here).  You shouldn't see a lot else - if you do, stop and open
+an issue before proceeding!
+
+You will note that there will be some warnings, because we don't have the CA key
+(https://github.com/kubernetes/kubernetes/issues/23264)  This means that we can't generate any
+new certificates.  You'll also (probably)
+see that you aren't using an elastic IP, because we will `allocate-address` a new one
+in the above output.
+
+e.g.
+```
+ELASTICIP_1=`aws ec2 allocate-address --domain vpc --query AllocationId`
+ELASTICIP_1_PUBLICIP=`aws ec2 describe-addresses --allocation-ids ${ELASTICIP_1} --query Addresses[].PublicIp`
+```
+
+Unfortunately the new Elastic IP will require a new certificate.
+
+Presuming that's right, we'll need to recreate all our keys, sadly.
+
+Backup the existing keys & config, and then delete the keys:
+```
+cp -r upgrade11/ upgrade11.backup/
+rm -rf upgrade11/pki/
+```
 
 Now comes the moment of truth.
 
 
-# Shut down your master:
-aws ec2 terminate-instances --instance-id i-434d1ec7
+# Shut down your master (output as INSTANCE_1 above)
+aws ec2 --region ${REGION} terminate-instances --instance-id i-8d247c4a
 
-# Run in bash mode again to see the changes it will make:
-kutil create cluster -i ~/.ssh/id_rsa -d upgrade11/ -r release-${release}/kubernetes/ --logtostderr --s3-bucket ${BUCKET} -t bash
+# Reconfigure your cluster:
+kutil create cluster -i ${ssh_key} -d upgrade11/ -r release-${release}/kubernetes/ --logtostderr --s3-bucket ${BUCKET} -t direct
 
+# Now once again list your clusters; if you weren't using an elastic IP previously, a new one will have been allocated
+kutil discover clusters --region ${REGION}
 
-# Now you can either execute that bash script, or have kutil run directly:
-kutil create cluster -i ~/.ssh/id_rsa -d upgrade11/ -r release-${release}/kubernetes/ --logtostderr --s3-bucket ${BUCKET} -t direct
+MASTER_IP=52.34.179.39 # or whatever it shows
 
-# Now once again list your clusters; if you weren't using an elastic IP previous one will have been allocated
-kutil get cluster --zone ${ZONE}
 
 # Now, if the IP address changed, this means your kubecfg is now pointing to an invalid IP
-# The easiest way is to go into your ~/.kube/config file and change the IP
-# But you can also do:
-#kutil create kubecfg --master 52.87.136.167
+# The kutil create kubecfg will update with a new configuration:
+kutil create kubecfg -i ${ssh_key} --master ${MASTER_IP}
 
 
+# If you now try `kubectl get nodes`, you should connect but the certificates are still not fully updated.
+> kubectl get nodes
+Unable to connect to the server: x509: certificate is valid for 52.27.60.160, 10.0.0.1, not 52.34.179.39
 
-ssh admin@52.87.136.167 mkdir /tmp/ca
-scp upgrade11/pki/issued/cn\=kubernetes-master.crt  admin@52.87.136.167:/tmp/ca/server.cert
-scp upgrade11/pki/private/cn\=kubernetes-master.key admin@52.87.136.167:/tmp/ca/server.key
-scp upgrade11/pki/issued/cn\=kubecfg.crt  admin@52.87.136.167:/tmp/ca/kubecfg.crt
-scp upgrade11/pki/private/cn\=kubecfg.key admin@52.87.136.167:/tmp/ca/kubecfg.key
-ssh admin@52.87.136.167 sudo cp /tmp/ca/* /mnt/master-pd/srv/kubernetes/
-ssh admin@52.87.136.167 sudo chown root:root /mnt/master-pd/srv/kubernetes/ca.crt /mnt/master-pd/srv/kubernetes/server.* /mnt/master-pd/srv/kubernetes/kubecfg.*
-ssh admin@52.87.136.167 sudo chmod 600  /mnt/master-pd/srv/kubernetes/ca.crt /mnt/master-pd/srv/kubernetes/server.* /mnt/master-pd/srv/kubernetes/kubecfg.*
-ssh admin@52.87.136.167 rm -rf /tmp/ca
-ssh admin@52.87.136.167 sudo systemctl restart docker
+# This is because we sent the correct certificates, but the script kept the old certificates
+# (as found on the persistent disk)
 
+ssh -i ${ssh_key} admin@${MASTER_IP} mkdir /tmp/ca
+scp -i ${ssh_key} upgrade11/pki/ca.crt  admin@${MASTER_IP}:/tmp/ca/ca.crt
+scp -i ${ssh_key} upgrade11/pki/issued/cn\=kubernetes-master.crt  admin@${MASTER_IP}:/tmp/ca/server.cert
+scp -i ${ssh_key} upgrade11/pki/private/cn\=kubernetes-master.key admin@${MASTER_IP}:/tmp/ca/server.key
+scp -i ${ssh_key} upgrade11/pki/issued/cn\=kubecfg.crt  admin@${MASTER_IP}:/tmp/ca/kubecfg.crt
+scp -i ${ssh_key} upgrade11/pki/private/cn\=kubecfg.key admin@${MASTER_IP}:/tmp/ca/kubecfg.key
+ssh -i ${ssh_key} admin@${MASTER_IP} sudo cp /tmp/ca/* /mnt/master-pd/srv/kubernetes/
+ssh -i ${ssh_key} admin@${MASTER_IP} sudo chown root:root /mnt/master-pd/srv/kubernetes/ca.crt /mnt/master-pd/srv/kubernetes/server.* /mnt/master-pd/srv/kubernetes/kubecfg.*
+ssh -i ${ssh_key} admin@${MASTER_IP} sudo chmod 600  /mnt/master-pd/srv/kubernetes/ca.crt /mnt/master-pd/srv/kubernetes/server.* /mnt/master-pd/srv/kubernetes/kubecfg.*
+ssh -i ${ssh_key} admin@${MASTER_IP} sudo rm -rf /tmp/ca
+ssh -i ${ssh_key} admin@${MASTER_IP} sudo systemctl restart docker
 
-kutil create kubecfg --master 52.87.136.167  -i ~/.ssh/id_rsa
+# And then re-update the configuration:
+kutil create kubecfg -i ${ssh_key} --master ${MASTER_IP}
 
 
 

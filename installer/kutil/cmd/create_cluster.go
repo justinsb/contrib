@@ -189,5 +189,6 @@ func (c*CreateClusterCmd) Run() error {
 		}
 	}
 
+	fmt.Printf("\n\nDone\n")
 	return nil
 }

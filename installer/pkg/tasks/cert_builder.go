@@ -47,7 +47,6 @@ func buildCertificateAlternateNames(k8s *K8s) ([]string, error) {
 		sans = append(sans, k8s.MasterInternalIP)
 	}
 
-	glog.Infof("Building certificate with alternate SANS: %v", sans)
 	return sans, nil
 }
 
@@ -208,8 +207,8 @@ func (b *CertBuilder) Run(c *fi.RunContext) error {
 				}
 			}
 
-			glog.Infof("X509 SANS IPAddresses: %v", template.IPAddresses)
-			glog.Infof("X509 SANS DNSNames: %v", template.DNSNames)
+			glog.V(2).Infof("X509 SANS IPAddresses: %v", template.IPAddresses)
+			glog.V(2).Infof("X509 SANS DNSNames: %v", template.DNSNames)
 
 			privateKey, err := certs.CreatePrivateKey(masterSubject)
 			if err != nil {
