@@ -66,12 +66,61 @@ func (b *CertBuilder) Run(c *fi.RunContext) error {
 	}
 
 	if k8s.CAKey == nil {
-		caKey, err := certs.GetCAKey()
+		caKey, err := certs.FindCAKey()
 		if err != nil {
 			return err
 		}
 
-		k8s.CAKey = keyToResource(caKey)
+		if caKey != nil {
+			k8s.CAKey = keyToResource(caKey)
+		} else {
+			// We allow this for upgrades
+			glog.Warningf("CA key is not set")
+		}
+	}
+
+	kubecfgSubject := &pkix.Name{
+		CommonName: "kubecfg",
+	}
+
+	if k8s.KubecfgCert == nil {
+		kubecfgCert, err := certs.FindCert(kubecfgSubject)
+		if err != nil {
+			return err
+		}
+
+		if kubecfgCert == nil {
+			template := &x509.Certificate{
+				Subject: *kubecfgSubject,
+				KeyUsage: x509.KeyUsageDigitalSignature,
+				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth },
+				BasicConstraintsValid: true,
+				IsCA: false,
+			}
+
+			privateKey, err := certs.CreatePrivateKey(kubecfgSubject)
+			if err != nil {
+				return err
+			}
+			kubecfgCert, err = certs.IssueCert(privateKey, template)
+			if err != nil {
+				return err
+			}
+		}
+
+		k8s.KubecfgCert = certToResource(kubecfgCert)
+	}
+
+	if k8s.KubecfgKey == nil {
+		key, err := certs.FindPrivateKey(kubecfgSubject)
+		if err != nil {
+			return err
+		}
+
+		if key == nil {
+			return fmt.Errorf("kubecfg key not found")
+		}
+		k8s.KubecfgKey = keyToResource(key)
 	}
 
 	kubeletSubject := &pkix.Name{

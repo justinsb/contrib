@@ -30,11 +30,11 @@ func (s *InternetGateway) GetID() *string {
 func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	actual := &InternetGateway{}
-
-	filters := cloud.BuildFilters(e.Name)
-	request := &ec2.DescribeInternetGatewaysInput{
-		Filters: filters,
+	request := &ec2.DescribeInternetGatewaysInput{}
+	if e.ID != nil {
+		request.InternetGatewayIds = []*string{e.ID}
+	} else {
+		request.Filters = cloud.BuildFilters(e.Name)
 	}
 
 	response, err := cloud.EC2.DescribeInternetGateways(request)
@@ -43,14 +43,15 @@ func (e *InternetGateway) find(c *fi.RunContext) (*InternetGateway, error) {
 	}
 	if response == nil || len(response.InternetGateways) == 0 {
 		return nil, nil
-	} else {
-		if len(response.InternetGateways) != 1 {
-			glog.Fatalf("found multiple InternetGateways matching tags")
-		}
-		igw := response.InternetGateways[0]
-		actual.ID = igw.InternetGatewayId
-		glog.V(2).Infof("found matching InternetGateway %q", *actual.ID)
 	}
+
+	if len(response.InternetGateways) != 1 {
+		return nil, fmt.Errorf("found multiple InternetGateways matching tags")
+	}
+	igw := response.InternetGateways[0]
+	actual := &InternetGateway{}
+	actual.ID = igw.InternetGatewayId
+	glog.V(2).Infof("found matching InternetGateway %q", *actual.ID)
 
 	return actual, nil
 }

@@ -29,6 +29,9 @@ func (e *InternetGatewayAttachment) find(c *fi.RunContext) (*InternetGatewayAtta
 	if vpcID == nil {
 		return nil, nil
 	}
+	if e.InternetGateway.ID == nil {
+		return nil, nil
+	}
 
 	cloud := c.Cloud().(*fi.AWSCloud)
 
@@ -45,6 +48,9 @@ func (e *InternetGatewayAttachment) find(c *fi.RunContext) (*InternetGatewayAtta
 	}
 
 	if len(response.InternetGateways) != 1 {
+		for _, ig := range response.InternetGateways {
+			glog.Infof("gateway: %v", DebugPrint(ig))
+		}
 		glog.Fatalf("found multiple InternetGatewayAttachments matching ID")
 	}
 	igw := response.InternetGateways[0]

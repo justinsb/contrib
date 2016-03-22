@@ -52,8 +52,12 @@ func (v *VPC) String() string {
 func (e *VPC) find(c *fi.RunContext) (*VPC, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	request := &ec2.DescribeVpcsInput{
-		Filters: cloud.BuildFilters(e.Name),
+	request := &ec2.DescribeVpcsInput{}
+
+	if e.ID != nil {
+		request.VpcIds = []*string{e.ID}
+	} else {
+		request.Filters = cloud.BuildFilters(e.Name)
 	}
 
 	response, err := cloud.EC2.DescribeVpcs(request)
@@ -108,7 +112,7 @@ func (e *VPC) Run(c *fi.RunContext) error {
 	changes := &VPC{}
 	changed := BuildChanges(a, e, changes)
 	if !changed {
-		glog.V(2).Infof("No changed: %v", e)
+		glog.V(2).Infof("No changes: %v", e)
 		return nil
 	}
 
@@ -117,13 +121,7 @@ func (e *VPC) Run(c *fi.RunContext) error {
 }
 
 func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
-	id := StringValue(e.ID)
-	if changes.CIDR != nil {
-		// TODO: Do we want to destroy & recreate the CIDR?
-		return InvalidChangeError("VPC did not have the correct CIDR", changes.CIDR, e.CIDR)
-	}
-
-	if id == "" {
+	if a == nil {
 		if e.CIDR == nil {
 			// TODO: Auto-assign CIDR
 			return MissingValueError("Must specify CIDR for VPC create")
@@ -140,11 +138,19 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 		}
 
 		e.ID = response.Vpc.VpcId
+	} else {
+		if changes.CIDR != nil {
+			// TODO: Do we want to destroy & recreate the CIDR?
+			return InvalidChangeError("VPC did not have the correct CIDR", changes.CIDR, e.CIDR)
+		}
+		if e.ID == nil {
+			e.ID = a.ID
+		}
 	}
 
 	if changes.EnableDNSSupport != nil {
 		request := &ec2.ModifyVpcAttributeInput{}
-		request.VpcId = aws.String(id)
+		request.VpcId = e.ID
 		request.EnableDnsSupport = &ec2.AttributeBooleanValue{Value: changes.EnableDNSSupport}
 
 		_, err := t.cloud.EC2.ModifyVpcAttribute(request)
@@ -155,7 +161,7 @@ func (t *AWSAPITarget) RenderVPC(a, e, changes *VPC) error {
 
 	if changes.EnableDNSHostnames != nil {
 		request := &ec2.ModifyVpcAttributeInput{}
-		request.VpcId = aws.String(id)
+		request.VpcId = e.ID
 		request.EnableDnsHostnames = &ec2.AttributeBooleanValue{Value: changes.EnableDNSHostnames}
 
 		_, err := t.cloud.EC2.ModifyVpcAttribute(request)

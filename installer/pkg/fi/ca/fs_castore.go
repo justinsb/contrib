@@ -11,6 +11,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"bytes"
+"github.com/golang/glog"
 )
 
 type FilesystemCAStore struct {
@@ -38,12 +39,14 @@ func NewCAStore(basedir string) (CAStore, error) {
 		return nil, err
 	}
 	if caCertificate != nil {
-		caPrivateKey, err := c.loadPrivateKey(path.Join(basedir, "private", "ca.key"))
+		privateKeyPath := path.Join(basedir, "private", "ca.key")
+		caPrivateKey, err := c.loadPrivateKey(privateKeyPath)
 		if err != nil {
 			return nil, err
 		}
 		if caPrivateKey == nil {
-			return nil, fmt.Errorf("error loading CA private key - key not found")
+			glog.Warningf("CA private key was not found %q", privateKeyPath)
+			//return nil, fmt.Errorf("error loading CA private key - key not found")
 		}
 		c.caCertificate = caCertificate
 		c.caPrivateKey = caPrivateKey
@@ -150,7 +153,7 @@ func (c *FilesystemCAStore) GetCACert() (*Certificate, error) {
 	return c.caCertificate, nil
 }
 
-func (c *FilesystemCAStore) GetCAKey() (crypto.PrivateKey, error) {
+func (c *FilesystemCAStore) FindCAKey() (crypto.PrivateKey, error) {
 	return c.caPrivateKey, nil
 }
 
@@ -176,6 +179,9 @@ func (c *FilesystemCAStore) FindCert(subject *pkix.Name) (*Certificate, error) {
 func (c *FilesystemCAStore) IssueCert(privateKey crypto.PrivateKey, template *x509.Certificate) (*Certificate, error) {
 	p := c.buildCertificatePath(&template.Subject)
 
+	if c.caPrivateKey == nil {
+		return nil, fmt.Errorf("ca.key was not found; cannot issue certificates")
+	}
 	cert, err := SignNewCertificate(privateKey, template, c.caCertificate.Certificate, c.caPrivateKey)
 	if err != nil {
 		return nil, err
@@ -197,9 +203,9 @@ func (c *FilesystemCAStore) loadPrivateKey(p string) (crypto.PrivateKey, error) 
 			return nil, nil
 		}
 	}
-	k, err := LoadPrivateKey(data)
+	k, err := parsePEMPrivateKey(data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error parsing private key from %q: %v", p, err)
 	}
 	return k, nil
 }

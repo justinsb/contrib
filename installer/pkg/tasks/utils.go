@@ -82,6 +82,11 @@ func equalFieldValues(a, e reflect.Value) bool {
 			}
 		}
 	}
+	//if a.Kind() == reflect.Ptr && !a.IsNil() && e.Kind() == reflect.Ptr && !e.IsNil() {
+	//	if reflect.DeepEqual(a.Elem().Interface(), e.Elem().Interface()) {
+	//		return true
+	//	}
+	//}
 	if reflect.DeepEqual(a.Interface(), e.Interface()) {
 		return true
 	}

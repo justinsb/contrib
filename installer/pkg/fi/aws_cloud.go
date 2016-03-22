@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"github.com/golang/glog"
 	fi_s3 "k8s.io/contrib/installer/pkg/fi/aws/s3"
-"github.com/aws/aws-sdk-go/service/elb"
+	"github.com/aws/aws-sdk-go/service/elb"
 )
 
 type AWSCloud struct {
@@ -194,11 +194,33 @@ func (t *AWSCloud) DescribeInstance(instanceID string) (*ec2.Instance, error) {
 	}
 
 	if len(reservation.Instances) != 1 {
-		glog.Fatalf("found multiple Instances for instance id")
+		return nil, fmt.Errorf("found multiple Instances for instance id")
 	}
 
 	instance := reservation.Instances[0]
 	return instance, nil
 }
+
+func (t *AWSCloud) DescribeVPC(vpcID string) (*ec2.Vpc, error) {
+	glog.V(2).Infof("Calilng DescribeVPC for VPC %q", vpcID)
+	request := &ec2.DescribeVpcsInput{
+		VpcIds: []*string{&vpcID},
+	}
+
+	response, err := t.EC2.DescribeVpcs(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing VPCs: %v", err)
+	}
+	if response == nil || len(response.Vpcs) == 0 {
+		return nil, nil
+	}
+	if len(response.Vpcs) != 1 {
+		return nil, fmt.Errorf("found multiple VPCs for instance id")
+	}
+
+	vpc := response.Vpcs[0]
+	return vpc, nil
+}
+
 
 

@@ -13,6 +13,8 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"encoding/json"
+	"k8s.io/contrib/installer/pkg/fi"
+	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
 type ExportClusterCmd struct {
@@ -97,6 +99,27 @@ func (c*ExportClusterCmd) Run() error {
 		return fmt.Errorf("cannot determine node instance type: %v", err)
 	}
 
+	macs, err := master.GetMetadataList("network/interfaces/macs/")
+	if err != nil {
+		return fmt.Errorf("cannot determine master network interfaces: %v", err)
+	}
+	if len(macs) == 0 {
+		return fmt.Errorf("master did not have any network interfaces")
+	}
+	subnetID, err := master.GetMetadata("network/interfaces/macs/" + macs[0] + "/subnet-id")
+	if err != nil {
+		return fmt.Errorf("cannot determine master Subnet: %v", err)
+	}
+	k8s.SubnetID = &subnetID
+
+	vpcID, err := master.GetMetadata("network/interfaces/macs/" + macs[0] + "/vpc-id")
+	if err != nil {
+		return fmt.Errorf("cannot determine master VPC: %v", err)
+	}
+	k8s.VPCID = &vpcID
+
+
+
 	// We want to upgrade!
 	// k8s.ImageId = ""
 
@@ -149,6 +172,32 @@ func (c*ExportClusterCmd) Run() error {
 			k8s.NodeInstanceType = ""
 		}
 	}
+
+	az := k8s.Zone
+	if len(az) <= 2 {
+		return fmt.Errorf("Invalid AZ: ", az)
+	}
+	region := az[:len(az) - 1]
+	tags := map[string]string{"KubernetesCluster": k8s.ClusterID}
+	cloud := fi.NewAWSCloud(region, tags)
+
+	igw, err := findInternetGateway(cloud, *k8s.VPCID)
+	if err != nil {
+		return err
+	}
+	if igw == nil {
+		return fmt.Errorf("unable to find internet gateway for VPC %q", k8s.VPCID)
+	}
+	k8s.InternetGatewayID = igw.InternetGatewayId
+
+	rt, err := findRouteTable(cloud, *k8s.SubnetID)
+	if err != nil {
+		return err
+	}
+	if rt == nil {
+		return fmt.Errorf("unable to find route table for Subnet %q", k8s.SubnetID)
+	}
+	k8s.RouteTableID = rt.RouteTableId
 
 
 	//b.Context = "aws_" + instancePrefix
@@ -223,7 +272,6 @@ func writeConf(p string, k8s *tasks.K8s) (error) {
 		return fmt.Errorf("error serializing configuration (yaml read phase): %v", err)
 	}
 
-
 	m := confObj.(map[interface{}]interface{})
 
 	for k, v := range m {
@@ -248,4 +296,44 @@ func writeConf(p string, k8s *tasks.K8s) (error) {
 	}
 
 	return nil
+}
+
+func findInternetGateway(cloud *fi.AWSCloud, vpcID string) (*ec2.InternetGateway, error) {
+	request := &ec2.DescribeInternetGatewaysInput{
+		Filters: []*ec2.Filter{fi.NewEC2Filter("attachment.vpc-id", vpcID)},
+	}
+
+	response, err := cloud.EC2.DescribeInternetGateways(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing InternetGateways: %v", err)
+	}
+	if response == nil || len(response.InternetGateways) == 0 {
+		return nil, nil
+	}
+
+	if len(response.InternetGateways) != 1 {
+		return nil, fmt.Errorf("found multiple InternetGatewayAttachments to VPC")
+	}
+	igw := response.InternetGateways[0]
+	return igw, nil
+}
+
+func findRouteTable(cloud *fi.AWSCloud, subnetID string) (*ec2.RouteTable, error) {
+	request := &ec2.DescribeRouteTablesInput{
+		Filters: []*ec2.Filter{fi.NewEC2Filter("association.subnet-id", subnetID)},
+	}
+
+	response, err := cloud.EC2.DescribeRouteTables(request)
+	if err != nil {
+		return nil, fmt.Errorf("error listing RouteTables: %v", err)
+	}
+	if response == nil || len(response.RouteTables) == 0 {
+		return nil, nil
+	}
+
+	if len(response.RouteTables) != 1 {
+		return nil, fmt.Errorf("found multiple RouteTables matching tags")
+	}
+	rt := response.RouteTables[0]
+	return rt, nil
 }

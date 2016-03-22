@@ -15,6 +15,7 @@ type GetClusterCmd struct {
 	ClusterID string
 }
 
+// TODO: kutil discover clusters would make more sense, rather than get clusters
 var getCluster GetClusterCmd
 
 func init() {

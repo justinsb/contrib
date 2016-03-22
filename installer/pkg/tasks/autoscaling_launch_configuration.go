@@ -14,6 +14,8 @@ type AutoscalingLaunchConfiguration struct {
 	fi.SimpleUnit
 
 	InstanceCommonConfig
+	UserData            fi.Resource
+
 	Name *string
 }
 
@@ -147,6 +149,7 @@ func (t *AWSAPITarget) RenderAutoscalingLaunchConfiguration(a, e, changes *Autos
 		if err != nil {
 			return fmt.Errorf("error creating AutoscalingLaunchConfiguration: %v", err)
 		}
+
 	}
 
 	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
@@ -160,6 +163,14 @@ func (t *BashTarget) RenderAutoscalingLaunchConfiguration(a, e, changes *Autosca
 		args := []string{"create-launch-configuration"}
 		args = append(args, "--launch-configuration-name", *e.Name)
 		args = append(args, e.buildAutoscalingCreateArgs(t)...)
+
+		if e.UserData != nil {
+			tempFile, err := t.AddLocalResource(e.UserData)
+			if err != nil {
+				glog.Fatalf("error adding resource: %v", err)
+			}
+			args = append(args, "--user-data", "file://" + tempFile)
+		}
 
 		t.AddAutoscalingCommand(args...)
 	}

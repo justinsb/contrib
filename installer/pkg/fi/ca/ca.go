@@ -24,7 +24,7 @@ type Certificate struct {
 
 type CAStore interface {
 	GetCACert() (*Certificate, error)
-	GetCAKey() (crypto.PrivateKey, error)
+	FindCAKey() (crypto.PrivateKey, error)
 	FindCert(subject *pkix.Name) (*Certificate, error)
 	IssueCert(privateKey crypto.PrivateKey, template *x509.Certificate) (*Certificate, error)
 	FindPrivateKey(subject *pkix.Name) (crypto.PrivateKey, error)
@@ -44,14 +44,6 @@ func LoadCertificate(pemData []byte) (*Certificate, error) {
 		IsCA: cert.IsCA,
 	}
 	return c, nil
-}
-
-func LoadPrivateKey(pemData []byte) (crypto.PrivateKey, error) {
-	privateKey, err := parsePEMPrivateKey(pemData)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing private key: %v", err)
-	}
-	return privateKey, nil
 }
 
 func SignNewCertificate(privateKey crypto.PrivateKey, template *x509.Certificate, signer *x509.Certificate, signerPrivateKey crypto.PrivateKey) (*Certificate, error) {
@@ -155,9 +147,16 @@ func parsePEMPrivateKey(pemData []byte) (crypto.PrivateKey, error) {
 			return nil, fmt.Errorf("could not parse private key")
 		}
 
-		if block.Type == "RSA PRIVATE KEY" || block.Type == "PRIVATE KEY" {
+		if block.Type == "RSA PRIVATE KEY" {
 			glog.V(2).Infof("Parsing pem block: %q", block.Type)
 			return x509.ParsePKCS1PrivateKey(block.Bytes)
+		} else if block.Type == "PRIVATE KEY" {
+			glog.V(2).Infof("Parsing pem block: %q", block.Type)
+			k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, err
+			}
+			return k.(crypto.PrivateKey), nil
 		} else {
 			glog.Infof("Ignoring unexpected PEM block: %q", block.Type)
 		}

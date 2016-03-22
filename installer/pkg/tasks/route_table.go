@@ -31,9 +31,11 @@ func (s *RouteTable) GetID() *string {
 func (e *RouteTable) find(c *fi.RunContext) (*RouteTable, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	actual := &RouteTable{}
-	request := &ec2.DescribeRouteTablesInput{
-		Filters: cloud.BuildFilters(e.Name),
+	request := &ec2.DescribeRouteTablesInput{}
+	if e.ID != nil {
+		request.RouteTableIds = []*string{e.ID}
+	} else {
+		request.Filters = cloud.BuildFilters(e.Name)
 	}
 
 	response, err := cloud.EC2.DescribeRouteTables(request)
@@ -42,16 +44,18 @@ func (e *RouteTable) find(c *fi.RunContext) (*RouteTable, error) {
 	}
 	if response == nil || len(response.RouteTables) == 0 {
 		return nil, nil
-	} else {
-		if len(response.RouteTables) != 1 {
-			glog.Fatalf("found multiple RouteTables matching tags")
-		}
-		rt := response.RouteTables[0]
-		actual.ID = rt.RouteTableId
-		actual.VPC = &VPC{ID: rt.VpcId}
-		actual.Name = e.Name
-		glog.V(2).Infof("found matching RouteTable %q", *actual.ID)
 	}
+
+	if len(response.RouteTables) != 1 {
+		return nil, fmt.Errorf("found multiple RouteTables matching tags")
+	}
+	rt := response.RouteTables[0]
+
+	actual := &RouteTable{}
+	actual.ID = rt.RouteTableId
+	actual.VPC = &VPC{ID: rt.VpcId}
+	actual.Name = e.Name
+	glog.V(2).Infof("found matching RouteTable %q", *actual.ID)
 
 	return actual, nil
 }
@@ -126,5 +130,5 @@ func (t *BashTarget) RenderRouteTable(a, e, changes *RouteTable) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e,  t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, t.cloud.BuildTags(e.Name))
 }

@@ -32,22 +32,11 @@ func (e *VPCDHCPOptionsAssociation) find(c *fi.RunContext) (*VPCDHCPOptionsAssoc
 		return nil, nil
 	}
 
-	request := &ec2.DescribeVpcsInput{
-		VpcIds: []*string{vpcID },
-	}
-	response, err := cloud.EC2.DescribeVpcs(request)
+	vpc, err := cloud.DescribeVPC(*vpcID)
 	if err != nil {
 		return nil, err
 	}
 
-	if response == nil || len(response.Vpcs) == 0 {
-		return nil, nil
-	}
-	if len(response.Vpcs) != 1 {
-		return nil, fmt.Errorf("found multiple VPCs with id %q", vpcID)
-	}
-
-	vpc := response.Vpcs[0]
 	actual := &VPCDHCPOptionsAssociation{}
 	actual.VPC = &VPC{ID: vpc.VpcId }
 	actual.DHCPOptions = &DHCPOptions{ID: vpc.DhcpOptionsId }

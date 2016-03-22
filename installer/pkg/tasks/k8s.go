@@ -11,6 +11,8 @@ import (
 	"encoding/binary"
 	"math/big"
 	"encoding/base64"
+	"gopkg.in/yaml.v2"
+	"encoding/json"
 )
 
 const (
@@ -161,7 +163,13 @@ type K8s struct {
 
 	EnableCustomMetrics           bool
 
-	SSHKey                        fi.Resource
+	SSHPublicKey                  fi.Resource
+
+	// For upgrades
+	SubnetID                      *string
+	VPCID                         *string
+	InternetGatewayID             *string
+	RouteTableID                  *string
 }
 
 func (k*K8s) Key() string {
@@ -169,6 +177,10 @@ func (k*K8s) Key() string {
 }
 
 func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error) {
+	// The bootstrap script requires some variables to be set...
+	// We use this as a marker for future cleanup
+	legacyEmptyVar := ""
+
 
 	// For now, we add everything as a string...
 	// The first problem is that the python parser converts true / false to "True" and "False",
@@ -213,6 +225,8 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 	y["ENABLE_CLUSTER_DNS"] = strconv.FormatBool(k.EnableClusterDNS)
 	if k.EnableClusterRegistry != nil {
 		y["ENABLE_CLUSTER_REGISTRY"] = strconv.FormatBool(*k.EnableClusterRegistry)
+	} else {
+		y["ENABLE_CLUSTER_REGISTRY"] = legacyEmptyVar
 	}
 	if k.ClusterRegistryDisk != nil {
 		y["CLUSTER_REGISTRY_DISK"] = *k.ClusterRegistryDisk
@@ -301,12 +315,18 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 
 		if k.EnableManifestURL != nil {
 			y["ENABLE_MANIFEST_URL"] = strconv.FormatBool(*k.EnableManifestURL)
+		} else {
+			y["ENABLE_MANIFEST_URL"] = legacyEmptyVar
 		}
 		if k.ManifestURL != nil {
 			y["MANIFEST_URL"] = *k.ManifestURL
+		}else {
+			y["MANIFEST_URL"] = legacyEmptyVar
 		}
 		if k.ManifestURLHeader != nil {
 			y["MANIFEST_URL_HEADER"] = *k.ManifestURLHeader
+		}else {
+			y["MANIFEST_URL_HEADER"] = legacyEmptyVar
 		}
 		y["NUM_NODES"] = strconv.Itoa(k.NodeCount)
 
@@ -403,21 +423,37 @@ func (k*K8s) Init() {
 	k.ServiceClusterIPRange = "10.0.0.0/16"
 	k.ClusterIPRange = "10.244.0.0/16"
 
-	k.ServerBinaryTar = findKubernetesTarGz()
-	k.SaltTar = findSaltTarGz()
-
 	k.NetworkProvider = "none"
 
 	k.ContainerRuntime = "docker"
 	k.KubernetesConfigureCbr0 = "true"
 
-
-
 	// Required to work with autoscaling minions
 	k.AllocateNodeCIDRs = true
 
 	k.CloudProvider = "aws"
+}
 
+func (k*K8s) MergeState(state []byte) error {
+	glog.V(4).Infof("Loading yaml: %s", string(state))
+
+	var yamlObj map[string]interface{}
+	err := yaml.Unmarshal(state, &yamlObj)
+	if err != nil {
+		return fmt.Errorf("error loading state (yaml read phase): %v", err)
+	}
+
+	jsonBytes, err := json.Marshal(yamlObj)
+	if err != nil {
+		return fmt.Errorf("error loading state (json write phase): %v", err)
+	}
+
+	err = json.Unmarshal(jsonBytes, k)
+	if err != nil {
+		return fmt.Errorf("error loading state (json read phase): %v", err)
+	}
+
+	return nil
 }
 
 func (k *K8s) Add(c *fi.BuildContext) {
@@ -593,10 +629,11 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	}
 	c.Add(iamNodeInstanceProfileRole)
 
-	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: k.SSHKey}
+	sshKey := &SSHKey{Name: String("kubernetes-" + clusterID), PublicKey: k.SSHPublicKey}
 	c.Add(sshKey)
 
 	vpc := &VPC{
+		ID: k.VPCID,
 		CIDR:String("172.20.0.0/16"),
 		Name: String("kubernetes-" + clusterID),
 		EnableDNSSupport:Bool(true),
@@ -618,15 +655,15 @@ func (k *K8s) Add(c *fi.BuildContext) {
 
 	c.Add(&VPCDHCPOptionsAssociation{VPC: vpc, DHCPOptions: dhcpOptions })
 
-	subnet := &Subnet{VPC: vpc, AvailabilityZone: String(k.Zone), CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID)}
+	subnet := &Subnet{VPC: vpc, AvailabilityZone: String(k.Zone), CIDR: String("172.20.0.0/24"), Name: String("kubernetes-" + clusterID), ID: k.SubnetID}
 	c.Add(subnet)
 
-	igw := &InternetGateway{Name: String("kubernetes-" + clusterID)}
+	igw := &InternetGateway{Name: String("kubernetes-" + clusterID), ID: k.InternetGatewayID}
 	c.Add(igw)
 
 	c.Add(&InternetGatewayAttachment{VPC: vpc, InternetGateway: igw})
 
-	routeTable := &RouteTable{VPC: vpc, Name: String("kubernetes-" + clusterID)}
+	routeTable := &RouteTable{VPC: vpc, Name: String("kubernetes-" + clusterID), ID: k.RouteTableID}
 	c.Add(routeTable)
 
 	route := &Route{RouteTable: routeTable, CIDR: String("0.0.0.0/0"), InternetGateway: igw}
@@ -694,8 +731,8 @@ func (k *K8s) Add(c *fi.BuildContext) {
 			InstanceType:        String(k.MasterInstanceType),
 			AssociatePublicIP:   Bool(true),
 			BlockDeviceMappings: masterBlockDeviceMappings,
-			UserData:            masterUserData,
 		},
+		UserData:            masterUserData,
 		Tags: map[string]string{"Role": "master"},
 	}
 	c.Add(masterInstance)
@@ -713,8 +750,8 @@ func (k *K8s) Add(c *fi.BuildContext) {
 			InstanceType:        String(k.NodeInstanceType),
 			AssociatePublicIP:   Bool(true),
 			BlockDeviceMappings: nodeBlockDeviceMappings,
-			UserData:            nodeUserData,
 		},
+		UserData:            nodeUserData,
 	}
 	c.Add(nodeConfiguration)
 
@@ -735,23 +772,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 func staticResource(key string) fi.Resource {
 	p := path.Join("_resources", key)
 	return fi.NewFileResource(p)
-}
-
-func findKubernetesTarGz() fi.Resource {
-	// TODO: Bash script has a fallback procedure
-	path := "_output/release-tars/kubernetes-server-linux-amd64.tar.gz"
-	return fi.NewFileResource(path)
-}
-
-func findSaltTarGz() fi.Resource {
-	// TODO: Bash script has a fallback procedure
-	path := "_output/release-tars/kubernetes-salt.tar.gz"
-	return fi.NewFileResource(path)
-}
-
-func findBootstrap() fi.Resource {
-	path := "bin/bootstrap"
-	return fi.NewFileResource(path)
 }
 
 func (k *K8s) GetWellKnownServiceIP(id int) (net.IP, error) {

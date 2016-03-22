@@ -162,13 +162,37 @@ func (m*NodeSSH) exec(cmd string) ([]byte, error) {
 	return b, nil
 }
 
-func (m*NodeSSH) InstanceType() (string, error) {
-	b, err := m.exec("curl -s http://169.254.169.254/latest/meta-data/instance-type")
+func (m*NodeSSH) GetMetadata(key string) (string, error) {
+	b, err := m.exec("curl -s http://169.254.169.254/latest/meta-data/" + key)
 	if err != nil {
-		return "", fmt.Errorf("error querying for instance metadata: %v", err)
+		return "", fmt.Errorf("error querying for metadata %q: %v", key,  err)
 	}
 	return string(b), nil
 }
+
+func (m*NodeSSH) InstanceType() (string, error) {
+	return m.GetMetadata("instance-type")
+}
+
+func (m*NodeSSH) GetMetadataList(key string) ([]string, error) {
+	d, err := m.GetMetadata(key)
+	if err != nil {
+		return nil, err
+	}
+	var macs []string
+	for _, line := range strings.Split(d, "\n") {
+		mac := line
+		mac = strings.Trim(mac, "/")
+		mac = strings.TrimSpace(mac)
+		if mac == "" {
+			continue
+		}
+		macs = append(macs, mac)
+	}
+
+	return macs, nil
+}
+
 
 func parsePrivateKeyFile(p string) (ssh.AuthMethod, error) {
 	buffer, err := ioutil.ReadFile(p)

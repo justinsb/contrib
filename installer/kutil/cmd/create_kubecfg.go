@@ -48,9 +48,11 @@ func (c*CreateKubecfgCmd) Run() error {
 	master := &kutil.NodeSSH{
 		IP: c.Master,
 	}
-	err := master.AddSSHIdentity(c.SSHIdentity)
-	if err != nil {
-		return err
+	if c.SSHIdentity != "" {
+		err := master.AddSSHIdentity(c.SSHIdentity)
+		if err != nil {
+			return err
+		}
 	}
 
 	conf, err := master.ReadConfiguration()

@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"k8s.io/contrib/installer/pkg/fi"
 )
 
 type BlockDeviceMapping struct {
@@ -51,7 +50,6 @@ type InstanceCommonConfig struct {
 	SecurityGroups      []*SecurityGroup
 	AssociatePublicIP   *bool
 	BlockDeviceMappings []*BlockDeviceMapping
-	UserData            fi.Resource
 	IAMInstanceProfile  *IAMInstanceProfile
 }
 
@@ -82,13 +80,6 @@ func (i *InstanceCommonConfig) buildCommonCreateArgs(output *BashTarget) []strin
 		bdm = strings.Replace(bdm, "\"VirtualName\":null,", "", -1)
 
 		args = append(args, "--block-device-mappings", bashQuoteString(bdm))
-	}
-	if i.UserData != nil {
-		tempFile, err := output.AddLocalResource(i.UserData)
-		if err != nil {
-			glog.Fatalf("error adding resource: %v", err)
-		}
-		args = append(args, "--user-data", "file://" + tempFile)
 	}
 
 	return args

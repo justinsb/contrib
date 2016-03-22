@@ -33,9 +33,11 @@ func (s *Subnet) GetID() *string {
 func (e *Subnet) find(c *fi.RunContext) (*Subnet, error) {
 	cloud := c.Cloud().(*fi.AWSCloud)
 
-	actual := &Subnet{}
-	request := &ec2.DescribeSubnetsInput{
-		Filters: cloud.BuildFilters(e.Name),
+	request := &ec2.DescribeSubnetsInput{}
+	if e.ID != nil {
+		request.SubnetIds = []*string{e.ID }
+	} else {
+		request.Filters = cloud.BuildFilters(e.Name)
 	}
 
 	response, err := cloud.EC2.DescribeSubnets(request)
@@ -44,17 +46,20 @@ func (e *Subnet) find(c *fi.RunContext) (*Subnet, error) {
 	}
 	if response == nil || len(response.Subnets) == 0 {
 		return nil, nil
-	} else {
-		if len(response.Subnets) != 1 {
-			glog.Fatalf("found multiple Subnets matching tags")
-		}
-		subnet := response.Subnets[0]
-		actual.ID = subnet.SubnetId
-		actual.AvailabilityZone = subnet.AvailabilityZone
-		actual.VPC = &VPC{ID: subnet.VpcId}
-		actual.CIDR = subnet.CidrBlock
-		glog.V(2).Infof("found matching subnet %q", *actual.ID)
 	}
+
+	if len(response.Subnets) != 1 {
+		glog.Fatalf("found multiple Subnets matching tags")
+	}
+	subnet := response.Subnets[0]
+
+	actual := &Subnet{}
+	actual.ID = subnet.SubnetId
+	actual.AvailabilityZone = subnet.AvailabilityZone
+	actual.VPC = &VPC{ID: subnet.VpcId}
+	actual.CIDR = subnet.CidrBlock
+
+	glog.V(2).Infof("found matching subnet %q", *actual.ID)
 
 	return actual, nil
 }
@@ -153,5 +158,5 @@ func (t *BashTarget) RenderSubnet(a, e, changes *Subnet) error {
 		t.AddAssignment(e, StringValue(a.ID))
 	}
 
-	return t.AddAWSTags(e,t.cloud.BuildTags(e.Name))
+	return t.AddAWSTags(e, t.cloud.BuildTags(e.Name))
 }

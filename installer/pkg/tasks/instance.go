@@ -19,6 +19,7 @@ type Instance struct {
 
 	ID               *string
 	InstanceCommonConfig
+	UserData            fi.Resource
 
 	Subnet           *Subnet
 	PrivateIPAddress *string
@@ -70,6 +71,12 @@ func (e *Instance) find(c *fi.RunContext) (*Instance, error) {
 	i := instances[0]
 	actual := &Instance{}
 	actual.ID = i.InstanceId
+	actual.PrivateIPAddress = i.PrivateIpAddress
+	for _, tag := range i.Tags {
+		if aws.StringValue(tag.Key) == "Name" {
+			actual.Name = tag.Value
+		}
+	}
 	return actual, nil
 }
 
@@ -183,6 +190,14 @@ func (t *BashTarget) RenderInstance(a, e, changes *Instance) error {
 
 		args := []string{"run-instances"}
 		args = append(args, e.buildEC2CreateArgs(t)...)
+
+		if e.UserData != nil {
+			tempFile, err := t.AddLocalResource(e.UserData)
+			if err != nil {
+				glog.Fatalf("error adding resource: %v", err)
+			}
+			args = append(args, "--user-data", "file://" + tempFile)
+		}
 
 		if e.Subnet != nil {
 			args = append(args, "--subnet-id", t.ReadVar(e.Subnet))

@@ -6,7 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"k8s.io/contrib/installer/pkg/fi"
-"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 type RouteTableAssociationRenderer interface {
@@ -53,22 +53,22 @@ func (e *RouteTableAssociation) find(c *fi.RunContext) (*RouteTableAssociation, 
 	}
 	if response == nil || len(response.RouteTables) == 0 {
 		return nil, nil
-	} else {
-		if len(response.RouteTables) != 1 {
-			glog.Fatalf("found multiple RouteTables matching tags")
+	}
+
+	if len(response.RouteTables) != 1 {
+		return nil, fmt.Errorf("found multiple RouteTables matching tags")
+	}
+	rt := response.RouteTables[0]
+	for _, rta := range rt.Associations {
+		if aws.StringValue(rta.SubnetId) != *subnetID {
+			continue
 		}
-		rt := response.RouteTables[0]
-		for _, rta := range rt.Associations {
-			if aws.StringValue(rta.SubnetId) != *subnetID {
-				continue
-			}
-			actual := &RouteTableAssociation{}
-			actual.ID = rta.RouteTableAssociationId
-			actual.RouteTable = &RouteTable{ID: rta.RouteTableId }
-			actual.Subnet = &Subnet{ID: rta.SubnetId}
-			glog.V(2).Infof("found matching RouteTableAssociation %q", *actual.ID)
-			return actual, nil
-		}
+		actual := &RouteTableAssociation{}
+		actual.ID = rta.RouteTableAssociationId
+		actual.RouteTable = &RouteTable{ID: rta.RouteTableId }
+		actual.Subnet = &Subnet{ID: rta.SubnetId}
+		glog.V(2).Infof("found matching RouteTableAssociation %q", *actual.ID)
+		return actual, nil
 	}
 
 	return nil, nil
