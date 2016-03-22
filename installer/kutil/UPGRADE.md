@@ -182,6 +182,8 @@ Unable to connect to the server: x509: certificate is valid for 52.27.60.160, 10
 # This is because we sent the correct certificates, but the script kept the old certificates
 # (as found on the persistent disk)
 
+PROBABLY BETTER JUST TO AUTOMATE THIS (MAYBE AS PART OF K8S DEPLOY)
+
 ssh -i ${ssh_key} admin@${MASTER_IP} mkdir /tmp/ca
 scp -i ${ssh_key} upgrade11/pki/ca.crt  admin@${MASTER_IP}:/tmp/ca/ca.crt
 scp -i ${ssh_key} upgrade11/pki/issued/cn\=kubernetes-master.crt  admin@${MASTER_IP}:/tmp/ca/server.cert
@@ -198,4 +200,6 @@ ssh -i ${ssh_key} admin@${MASTER_IP} sudo systemctl restart docker
 kutil create kubecfg -i ${ssh_key} --master ${MASTER_IP}
 
 
+
+NEED TO DOCUMENT RESTARTIN OF ASG
 
