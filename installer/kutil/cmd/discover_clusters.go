@@ -9,52 +9,41 @@ import (
 	"k8s.io/contrib/installer/kutil/pkg/kutil"
 )
 
-type GetClusterCmd struct {
+type DiscoverClustersCmd struct {
 	Region    string
-	Zone      string
 	ClusterID string
 }
 
-// TODO: kutil discover clusters would make more sense, rather than get clusters
-var getCluster GetClusterCmd
+var discoverClusters DiscoverClustersCmd
 
 func init() {
 	cmd := &cobra.Command{
-		Use:   "cluster",
-		Short: "List cluster",
-		Long: `Lists k8s cluster.`,
+		Use:   "clusters",
+		Short: "Discover clusters",
+		Long: `Discover k8s cluster.`,
 		Run: func(cmd *cobra.Command, args[]string) {
 			if len(args) != 0 {
 				if len(args) == 1 {
-					getCluster.ClusterID = args[0]
+					discoverClusters.ClusterID = args[0]
 				} else {
 					glog.Exitf("unexpected arguments passed")
 				}
 			}
-			err := getCluster.Run()
+			err := discoverClusters.Run()
 			if err != nil {
 				glog.Exitf("%v", err)
 			}
 		},
 	}
 
-	getCmd.AddCommand(cmd)
+	discoverCmd.AddCommand(cmd)
 
-	cmd.Flags().StringVar(&getCluster.Region, "region", "", "region")
-	cmd.Flags().StringVar(&getCluster.Zone, "zone", "", "zone")
+	cmd.Flags().StringVar(&discoverClusters.Region, "region", "", "region")
 }
 
-func (c*GetClusterCmd) Run() error {
-	if c.Zone == "" && c.Region == "" {
-		return fmt.Errorf("--zone or --region is required")
-	}
-
+func (c*DiscoverClustersCmd) Run() error {
 	if c.Region == "" {
-		az := c.Zone
-		if len(az) <= 2 {
-			return fmt.Errorf("Invalid AZ: ", az)
-		}
-		c.Region = az[:len(az) - 1]
+		return fmt.Errorf("--region is required")
 	}
 
 	tags := make(map[string]string)

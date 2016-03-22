@@ -153,6 +153,12 @@ func (c*DeleteCluster)  ListResources() ([]DeletableResource, error) {
 				resource = &DeletableSubnet{ID: *t.ResourceId}
 			case "security-group":
 				resource = &DeletableSecurityGroup{ID: *t.ResourceId}
+			case "internet-gateway":
+				resource = &DeletableInternetGateway{ID: *t.ResourceId}
+			case "route-table":
+				resource = &DeletableRouteTable{ID: *t.ResourceId}
+			case "vpc":
+				resource = &DeletableVPC{ID: *t.ResourceId}
 			}
 
 			if resource == nil {
@@ -327,6 +333,69 @@ func (r*DeletableSubnet) Delete(cloud fi.Cloud) error {
 }
 func (r*DeletableSubnet) String() string {
 	return "Subnet:" + r.ID
+}
+
+type DeletableRouteTable struct {
+	ID string
+}
+
+func (r*DeletableRouteTable) Delete(cloud fi.Cloud) error {
+	c := cloud.(*fi.AWSCloud)
+
+	glog.V(2).Infof("Deleting EC2 RouteTable %q", r.ID)
+	request := &ec2.DeleteRouteTableInput{
+		RouteTableId: &r.ID,
+	}
+	_, err := c.EC2.DeleteRouteTable(request)
+	if err != nil {
+		return fmt.Errorf("error deleting RouteTable %q: %v", r.ID, err)
+	}
+	return nil
+}
+func (r*DeletableRouteTable) String() string {
+	return "RouteTable:" + r.ID
+}
+
+type DeletableInternetGateway struct {
+	ID string
+}
+
+func (r*DeletableInternetGateway) Delete(cloud fi.Cloud) error {
+	c := cloud.(*fi.AWSCloud)
+
+	glog.V(2).Infof("Deleting EC2 InternetGateway %q", r.ID)
+	request := &ec2.DeleteInternetGatewayInput{
+		InternetGatewayId: &r.ID,
+	}
+	_, err := c.EC2.DeleteInternetGateway(request)
+	if err != nil {
+		return fmt.Errorf("error deleting InternetGateway %q: %v", r.ID, err)
+	}
+	return nil
+}
+func (r*DeletableInternetGateway) String() string {
+	return "InternetGateway:" + r.ID
+}
+
+type DeletableVPC struct {
+	ID string
+}
+
+func (r*DeletableVPC) Delete(cloud fi.Cloud) error {
+	c := cloud.(*fi.AWSCloud)
+
+	glog.V(2).Infof("Deleting EC2 VPC %q", r.ID)
+	request := &ec2.DeleteVpcInput{
+		VpcId: &r.ID,
+	}
+	_, err := c.EC2.DeleteVpc(request)
+	if err != nil {
+		return fmt.Errorf("error deleting VPC %q: %v", r.ID, err)
+	}
+	return nil
+}
+func (r*DeletableVPC) String() string {
+	return "VPC:" + r.ID
 }
 
 type DeletableASG struct {
