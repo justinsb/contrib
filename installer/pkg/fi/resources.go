@@ -55,6 +55,51 @@ func HashesForResource(r Resource, hashAlgorithms []HashAlgorithm) (map[HashAlgo
 	return hashes, nil
 }
 
+func ResourcesMatch(a, b Resource) (bool, error) {
+	aReader, err := a.Open()
+	if err != nil {
+		return false, err
+	}
+	defer SafeClose(aReader)
+
+	bReader, err := a.Open()
+	if err != nil {
+		return false, err
+	}
+	defer SafeClose(bReader)
+
+	const size = 8192
+	aData := make([]byte, size)
+	bData := make([]byte, size)
+
+	for {
+		aN, aErr := io.ReadFull(aReader, aData)
+		if aErr != nil && aErr != io.EOF && aErr != io.ErrUnexpectedEOF {
+			return false, aErr
+		}
+
+		bN, bErr := io.ReadFull(bReader, bData)
+		if bErr != nil && bErr != io.EOF && bErr != io.ErrUnexpectedEOF {
+			return false, bErr
+		}
+
+		if aErr == nil && bErr == nil {
+			if aN != size || bN != size {
+				panic("violation of io.ReadFull contract")
+			}
+			if !bytes.Equal(aData, bData) {
+				return false, nil
+			}
+			continue
+		}
+
+		if aN != bN {
+			return false, nil
+		}
+
+		return bytes.Equal(aData[0:aN], bData[0:bN]), nil
+	}
+}
 
 //type DynamicResource interface {
 //	Resource

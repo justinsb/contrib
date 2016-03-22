@@ -19,6 +19,8 @@ P1
 
 Delete the other types: vpc, route-table, internet-gateway
 
+Include launch configuration in ASG tags?
+
 =======================================================
 
 P2

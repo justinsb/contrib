@@ -9,21 +9,36 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"strings"
 	"k8s.io/contrib/installer/pkg/fi"
+	"encoding/base64"
+	"time"
 )
 
+func buildTimestampString() string {
+	now := time.Now()
+	return now.UTC().Format("20060102T150405Z")
+}
+
+// This one is a little weird because we can't update a launch configuration
+// So we have to create the launch configuration as part of the group
 type AutoscalingGroup struct {
 	fi.SimpleUnit
 
-	Name                *string
-	LaunchConfiguration *AutoscalingLaunchConfiguration
-	MinSize             *int64
-	MaxSize             *int64
-	Subnet              *Subnet
-	Tags                map[string]string
+	Name                    *string
+
+	InstanceCommonConfig
+	UserData                fi.Resource
+
+	MinSize                 *int64
+	MaxSize                 *int64
+	Subnet                  *Subnet
+	Tags                    map[string]string
+
+	launchConfigurationName *string
 }
 
 type AutoscalingGroupRenderer interface {
 	RenderAutoscalingGroup(actual, expected, changes *AutoscalingGroup) error
+	RenderAutoscalingLaunchConfiguration(name string, e *AutoscalingGroup) error
 }
 
 func (s *AutoscalingGroup) Key() string {
@@ -70,13 +85,24 @@ func (e *AutoscalingGroup) find(c *fi.RunContext) (*AutoscalingGroup, error) {
 		}
 	}
 
-	actual.LaunchConfiguration = &AutoscalingLaunchConfiguration{Name:g.LaunchConfigurationName}
-
 	if len(g.Tags) != 0 {
 		actual.Tags = make(map[string]string)
 		for _, tag := range g.Tags {
 			actual.Tags[*tag.Key] = *tag.Value
 		}
+	}
+
+	if g.LaunchConfigurationName == nil {
+		return nil, fmt.Errorf("autoscaling Group %q had no LaunchConfiguration", *actual.Name)
+	}
+	actual.launchConfigurationName = g.LaunchConfigurationName
+
+	found, err := e.findLaunchConfiguration(c, *g.LaunchConfigurationName, actual)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("unable to find autoscaling LaunchConfiguration %q", *g.LaunchConfigurationName)
 	}
 
 	return actual, nil
@@ -125,11 +151,19 @@ func (e *AutoscalingGroup) buildTags(cloud *fi.AWSCloud) map[string]string {
 
 func (t *AWSAPITarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) error {
 	if a == nil {
-		glog.V(2).Infof("Creating AutoscalingGroup with Name:%q", *e.Name)
+		launchConfigurationName := *e.Name + "-" + buildTimestampString()
+		glog.V(2).Infof("Creating autoscaling LaunchConfiguration with Name:%q", launchConfigurationName)
+
+		err := t.RenderAutoscalingLaunchConfiguration(launchConfigurationName, e)
+		if err != nil {
+			return err
+		}
+
+		glog.V(2).Infof("Creating autoscaling Group with Name:%q", *e.Name)
 
 		request := &autoscaling.CreateAutoScalingGroupInput{}
 		request.AutoScalingGroupName = e.Name
-		request.LaunchConfigurationName = e.LaunchConfiguration.Name
+		request.LaunchConfigurationName = &launchConfigurationName
 		request.MinSize = e.MinSize
 		request.MaxSize = e.MaxSize
 		request.VPCZoneIdentifier = e.Subnet.ID
@@ -145,9 +179,28 @@ func (t *AWSAPITarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) e
 		}
 		request.Tags = tags
 
-		_, err := t.cloud.Autoscaling.CreateAutoScalingGroup(request)
+		_, err = t.cloud.Autoscaling.CreateAutoScalingGroup(request)
 		if err != nil {
 			return fmt.Errorf("error creating AutoscalingGroup: %v", err)
+		}
+	} else {
+		if changes.UserData != nil {
+			launchConfigurationName := *e.Name + "-" + buildTimestampString()
+			glog.V(2).Infof("Creating autoscaling LaunchConfiguration with Name:%q", launchConfigurationName)
+
+			err := t.RenderAutoscalingLaunchConfiguration(launchConfigurationName, e)
+			if err != nil {
+				return err
+			}
+
+			request := &autoscaling.UpdateAutoScalingGroupInput{
+				AutoScalingGroupName: e.Name,
+				LaunchConfigurationName: &launchConfigurationName,
+			}
+			_, err = t.cloud.Autoscaling.UpdateAutoScalingGroup(request)
+			if err != nil {
+				return fmt.Errorf("error updating AutoscalingGroup: %v", err)
+			}
 		}
 	}
 
@@ -156,11 +209,19 @@ func (t *AWSAPITarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) e
 
 func (t *BashTarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) error {
 	if a == nil {
-		glog.V(2).Infof("Creating AutoscalingGroup with Name:%q", *e.Name)
+		launchConfigurationName := *e.Name + "-" + buildTimestampString()
+		glog.V(2).Infof("Creating autoscaling LaunchConfiguration with Name:%q", launchConfigurationName)
+
+		err := t.RenderAutoscalingLaunchConfiguration(launchConfigurationName, e)
+		if err != nil {
+			return err
+		}
+
+		glog.V(2).Infof("Creating autoscaling Group with Name:%q", *e.Name)
 
 		args := []string{"create-auto-scaling-group"}
 		args = append(args, "--auto-scaling-group-name", *e.Name)
-		args = append(args, "--launch-configuration-name", *e.LaunchConfiguration.Name)
+		args = append(args, "--launch-configuration-name", launchConfigurationName)
 		args = append(args, "--min-size", strconv.FormatInt(*e.MinSize, 10))
 		args = append(args, "--max-size", strconv.FormatInt(*e.MaxSize, 10))
 		args = append(args, "--vpc-zone-identifier", t.ReadVar(e.Subnet))
@@ -174,6 +235,37 @@ func (t *BashTarget) RenderAutoscalingGroup(a, e, changes *AutoscalingGroup) err
 		}
 
 		t.AddAutoscalingCommand(args...)
+	} else {
+		if changes.UserData != nil {
+			//ad, _ := fi.ResourceAsString(a.UserData)
+			//glog.Infof("ACTUAL %s", ad)
+			//ed, _ := fi.ResourceAsString(e.UserData)
+			//glog.Infof("EXPECTED %s", ed)
+			//
+			//for {
+			//	if ad[0] != ed[0] {
+			//		break
+			//	}
+			//		ad = ad[1:]
+			//		ed = ed[1:]
+			//}
+			//glog.Infof("ACTUAL DELTA %s", ad)
+			//glog.Infof("EXPECTED DELTA %s", ed)
+
+
+			launchConfigurationName := *e.Name + "-" + buildTimestampString()
+			glog.V(2).Infof("Creating autoscaling LaunchConfiguration with Name:%q", launchConfigurationName)
+
+			err := t.RenderAutoscalingLaunchConfiguration(launchConfigurationName, e)
+			if err != nil {
+				return err
+			}
+
+			args := []string{"update-auto-scaling-group"}
+			args = append(args, "--auto-scaling-group-name", *e.Name)
+			args = append(args, "--launch-configuration-name", launchConfigurationName)
+			t.AddAutoscalingCommand(args...)
+		}
 	}
 
 	return nil
@@ -198,3 +290,117 @@ func (g *AutoscalingGroup) Destroy(cloud *AWSCloud, output *BashTarget) error {
 	return nil
 }
 */
+
+
+func (e *AutoscalingGroup) findLaunchConfiguration(c *fi.RunContext, name string, dest *AutoscalingGroup) (bool, error) {
+	cloud := c.Cloud().(*fi.AWSCloud)
+
+	request := &autoscaling.DescribeLaunchConfigurationsInput{
+		LaunchConfigurationNames: []*string{&name},
+	}
+
+	response, err := cloud.Autoscaling.DescribeLaunchConfigurations(request)
+	if err != nil {
+		return false, fmt.Errorf("error listing AutoscalingLaunchConfigurations: %v", err)
+	}
+
+	if response == nil || len(response.LaunchConfigurations) == 0 {
+		return false, nil
+	}
+
+	if len(response.LaunchConfigurations) != 1 {
+		return false, fmt.Errorf("found multiple AutoscalingLaunchConfigurations with name: %q", *e.Name)
+	}
+
+	glog.V(2).Info("found existing AutoscalingLaunchConfiguration")
+	i := response.LaunchConfigurations[0]
+	dest.Name = i.LaunchConfigurationName
+	dest.ImageID = i.ImageId
+	dest.InstanceType = i.InstanceType
+	dest.SSHKey = &SSHKey{Name:i.KeyName}
+
+	securityGroups := []*SecurityGroup{}
+	for _, sgID := range i.SecurityGroups {
+		securityGroups = append(securityGroups, &SecurityGroup{ID:sgID})
+	}
+	dest.SecurityGroups = securityGroups
+	dest.AssociatePublicIP = i.AssociatePublicIpAddress
+
+	dest.BlockDeviceMappings = []*BlockDeviceMapping{}
+	for _, b := range i.BlockDeviceMappings {
+		dest.BlockDeviceMappings = append(dest.BlockDeviceMappings, BlockDeviceMappingFromAutoscaling(b))
+	}
+	userData, err := base64.StdEncoding.DecodeString(*i.UserData)
+	if err != nil {
+		return false, fmt.Errorf("error decoding UserData: %v", err)
+	}
+	dest.UserData = fi.NewStringResource(string(userData))
+	dest.IAMInstanceProfile = &IAMInstanceProfile{ID: i.IamInstanceProfile }
+	dest.AssociatePublicIP = i.AssociatePublicIpAddress
+
+	return true, nil
+}
+
+func (t *AWSAPITarget) RenderAutoscalingLaunchConfiguration(name string, e *AutoscalingGroup) error {
+	glog.V(2).Infof("Creating AutoscalingLaunchConfiguration with Name:%q", name)
+
+	request := &autoscaling.CreateLaunchConfigurationInput{}
+	request.LaunchConfigurationName = &name
+	request.ImageId = e.ImageID
+	request.InstanceType = e.InstanceType
+	if e.SSHKey != nil {
+		request.KeyName = e.SSHKey.Name
+	}
+	securityGroupIDs := []*string{}
+	for _, sg := range e.SecurityGroups {
+		securityGroupIDs = append(securityGroupIDs, sg.ID)
+	}
+	request.SecurityGroups = securityGroupIDs
+	request.AssociatePublicIpAddress = e.AssociatePublicIP
+	if e.BlockDeviceMappings != nil {
+		request.BlockDeviceMappings = []*autoscaling.BlockDeviceMapping{}
+		for _, b := range e.BlockDeviceMappings {
+			request.BlockDeviceMappings = append(request.BlockDeviceMappings, b.ToAutoscaling())
+		}
+	}
+
+	if e.UserData != nil {
+		d, err := fi.ResourceAsBytes(e.UserData)
+		if err != nil {
+			return fmt.Errorf("error rendering AutoScalingLaunchConfiguration UserData: %v", err)
+		}
+		request.UserData = aws.String(base64.StdEncoding.EncodeToString(d))
+	}
+	if e.IAMInstanceProfile != nil {
+		request.IamInstanceProfile = e.IAMInstanceProfile.Name
+	}
+
+	_, err := t.cloud.Autoscaling.CreateLaunchConfiguration(request)
+	if err != nil {
+		return fmt.Errorf("error creating AutoscalingLaunchConfiguration: %v", err)
+	}
+
+	return nil //return output.AddAWSTags(cloud.Tags(), v, "vpc")
+}
+
+func (t *BashTarget) RenderAutoscalingLaunchConfiguration(name string, e *AutoscalingGroup) error {
+	t.CreateVar(e)
+	glog.V(2).Infof("Creating AutoscalingLaunchConfiguration with Name:%q", *e.Name)
+
+	args := []string{"create-launch-configuration"}
+	args = append(args, "--launch-configuration-name", name)
+	args = append(args, e.buildAutoscalingCreateArgs(t)...)
+
+	if e.UserData != nil {
+		tempFile, err := t.AddLocalResource(e.UserData)
+		if err != nil {
+			glog.Fatalf("error adding resource: %v", err)
+		}
+		args = append(args, "--user-data", "file://" + tempFile)
+	}
+
+	t.AddAutoscalingCommand(args...)
+
+	return nil
+}
+

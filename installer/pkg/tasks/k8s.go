@@ -4,7 +4,6 @@ import (
 	"k8s.io/contrib/installer/pkg/fi"
 	"github.com/golang/glog"
 	"strconv"
-	"time"
 	"path"
 	"net"
 	"fmt"
@@ -186,7 +185,8 @@ func (k*K8s) BuildEnv(c *fi.RunContext, isMaster bool) (map[string]string, error
 	// The first problem is that the python parser converts true / false to "True" and "False",
 	// which breaks string-based comparisons (as done in bash)
 	y := map[string]string{}
-	y["ENV_TIMESTAMP"] = time.Now().UTC().Format("2006-01-02T03:04:05+0000")
+	// ENV_TIMESTAMP breaks our deltas!
+	//y["ENV_TIMESTAMP"] = time.Now().UTC().Format("2006-01-02T03:04:05+0000")
 	y["INSTANCE_PREFIX"] = k.InstancePrefix
 	y["NODE_INSTANCE_PREFIX"] = k.NodeInstancePrefix
 	y["CLUSTER_IP_RANGE"] = k.ClusterIPRange
@@ -740,8 +740,15 @@ func (k *K8s) Add(c *fi.BuildContext) {
 	c.Add(&InstanceElasticIPAttachment{Instance:masterInstance, ElasticIP: masterIP})
 	c.Add(&InstanceVolumeAttachment{Instance:masterInstance, Volume: masterPV, Device: String("/dev/sdb")})
 
-	nodeConfiguration := &AutoscalingLaunchConfiguration{
-		Name: String(clusterID + "-minion-group"),
+
+	nodeGroup := &AutoscalingGroup{
+		Name:                String(clusterID + "-minion-group"),
+		MinSize:             Int64(int64(k.NodeCount)),
+		MaxSize:             Int64(int64(k.NodeCount)),
+		Subnet:              subnet,
+		Tags: map[string]string{
+			"Role": "node",
+		},
 		InstanceCommonConfig: InstanceCommonConfig{
 			SSHKey:              sshKey,
 			SecurityGroups:      []*SecurityGroup{nodeSG},
@@ -752,18 +759,6 @@ func (k *K8s) Add(c *fi.BuildContext) {
 			BlockDeviceMappings: nodeBlockDeviceMappings,
 		},
 		UserData:            nodeUserData,
-	}
-	c.Add(nodeConfiguration)
-
-	nodeGroup := &AutoscalingGroup{
-		Name:                String(clusterID + "-minion-group"),
-		LaunchConfiguration: nodeConfiguration,
-		MinSize:             Int64(int64(k.NodeCount)),
-		MaxSize:             Int64(int64(k.NodeCount)),
-		Subnet:              subnet,
-		Tags: map[string]string{
-			"Role": "node",
-		},
 	}
 	c.Add(nodeGroup)
 

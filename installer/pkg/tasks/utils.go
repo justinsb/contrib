@@ -69,15 +69,29 @@ func equalFieldValues(a, e reflect.Value) bool {
 	//	e = e.Elem()
 	//}
 
-	if a.Kind() == reflect.Ptr &&  !a.IsNil() {
+	if (a.Kind() == reflect.Ptr || a.Kind() == reflect.Interface) &&  !a.IsNil() {
 		aHasID, ok := a.Interface().(fi.HasID)
-		if ok && e.Kind() == reflect.Ptr &&  !e.IsNil() {
+		if ok && (e.Kind() == reflect.Ptr || e.Kind() == reflect.Interface) &&  !e.IsNil() {
 			eHasID, ok := e.Interface().(fi.HasID)
 			if ok {
 				aID := aHasID.GetID()
 				eID := eHasID.GetID()
 				if aID != nil && eID != nil && *aID == *eID {
 					return true
+				}
+			}
+		}
+
+		aResource, ok := a.Interface().(fi.Resource)
+		if ok && (e.Kind() == reflect.Ptr || e.Kind() == reflect.Interface) && !e.IsNil() {
+			eResource, ok := e.Interface().(fi.Resource)
+			if ok {
+				same, err := fi.ResourcesMatch(aResource, eResource)
+				if err != nil {
+					glog.Warningf("error while comparing resources: %v", err)
+				} else {
+					glog.Infof("resources match: %v", same)
+					return same
 				}
 			}
 		}
