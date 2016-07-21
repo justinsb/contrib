@@ -14,6 +14,8 @@
 
 FROM debian:jessie
 
+RUN apt-get -y update && apt-get -y install ca-certificates
+
 COPY dns-controller /
 
 WORKDIR /
