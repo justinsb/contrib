@@ -1,15 +1,15 @@
 package route53
 
 import (
+	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/elb"
+	awsr53 "github.com/aws/aws-sdk-go/service/route53"
+	"github.com/golang/glog"
 	"k8s.io/contrib/dns/pkg/providers"
 	"k8s.io/kubernetes/pkg/api"
-	"github.com/aws/aws-sdk-go/aws/session"
-	awsr53 "github.com/aws/aws-sdk-go/service/route53"
-	"github.com/aws/aws-sdk-go/aws"
-	"fmt"
 	"strings"
-	"github.com/golang/glog"
-	"github.com/aws/aws-sdk-go/service/elb"
 )
 
 type Route53Provider struct {
@@ -27,18 +27,22 @@ func NewRoute53Provider() (*Route53Provider, error) {
 
 	p := &Route53Provider{
 		r53Client: r53Client,
-		elbClient : elbClient,
+		elbClient: elbClient,
 	}
 	return p, nil
 }
 
-func (p*Route53Provider) getELBInfo(dnsName string) (*elb.LoadBalancerDescription, error) {
+func (p *Route53Provider) getELBInfo(dnsName string) (*elb.LoadBalancerDescription, error) {
 	// TODO: Cache
 	// TODO: Check if "looks like" an ELB?
 	// TODO: Only do this if service type=LoadBalancer
 
 	tokens := strings.Split(dnsName, ".")
 	elbNameTokens := strings.Split(tokens[0], "-")
+
+	if elbNameTokens[0] == "internal" {
+		elbNameTokens = append(elbNameTokens[:0], elbNameTokens[1:]...)
+	}
 
 	if len(elbNameTokens) != 2 {
 		glog.Infof("does not look like an ELB name: %q", dnsName)
@@ -85,7 +89,7 @@ func (p *Route53Provider) EnsureNames(names map[string]*providers.DNSName, ingre
 			continue
 		}
 
-		zone := name[firstDot + 1:]
+		zone := name[firstDot+1:]
 		if zone == "" {
 			glog.Warningf("ignoring name with unexpected structure: %q", name)
 		}
@@ -168,7 +172,7 @@ func (p *Route53Provider) EnsureNames(names map[string]*providers.DNSName, ingre
 
 		changeRequest := &awsr53.ChangeResourceRecordSetsInput{
 			HostedZoneId: aws.String(hostedZoneID),
-			ChangeBatch: batch,
+			ChangeBatch:  batch,
 		}
 
 		// TODO: cope with limits
@@ -203,13 +207,12 @@ func (p *Route53Provider) EnsureNames(names map[string]*providers.DNSName, ingre
 	return nil
 }
 
-func (p*Route53Provider) listHostedZones() ([]*awsr53.HostedZone, error) {
+func (p *Route53Provider) listHostedZones() ([]*awsr53.HostedZone, error) {
 	// TODO: Cache (with periodic resync for new zones)
 	var hostedZones []*awsr53.HostedZone
 	request := &awsr53.ListHostedZonesInput{}
 	glog.V(2).Infof("querying Route53 for hosted zones")
-	err := p.r53Client.ListHostedZonesPages(request, func(p *awsr53.ListHostedZonesOutput, lastPage bool) (/*shouldContinue*/
-	bool) {
+	err := p.r53Client.ListHostedZonesPages(request, func(p *awsr53.ListHostedZonesOutput, lastPage bool) /*shouldContinue*/ bool {
 		hostedZones = append(hostedZones, p.HostedZones...)
 		return true
 	})
@@ -222,7 +225,7 @@ func (p*Route53Provider) listHostedZones() ([]*awsr53.HostedZone, error) {
 	return hostedZones, nil
 }
 
-func (p*Route53Provider) buildRRS(name string, ingress []api.LoadBalancerIngress) (*awsr53.ResourceRecordSet, error) {
+func (p *Route53Provider) buildRRS(name string, ingress []api.LoadBalancerIngress) (*awsr53.ResourceRecordSet, error) {
 	// TODO: Most of this construction logic does not depend on the name
 	var elbs []*elb.LoadBalancerDescription
 	var hostnames []string
@@ -275,8 +278,8 @@ func (p*Route53Provider) buildRRS(name string, ingress []api.LoadBalancerIngress
 		}
 
 		rrs = &awsr53.ResourceRecordSet{
-			Name:        aws.String(name),
-			Type:        aws.String("A"),
+			Name:            aws.String(name),
+			Type:            aws.String("A"),
 			ResourceRecords: records,
 		}
 	} else if len(ips) == 0 {
@@ -303,8 +306,8 @@ func (p*Route53Provider) buildRRS(name string, ingress []api.LoadBalancerIngress
 		}
 
 		rrs = &awsr53.ResourceRecordSet{
-			Name:        aws.String(name),
-			Type:        aws.String("CNAME"),
+			Name:            aws.String(name),
+			Type:            aws.String("CNAME"),
 			ResourceRecords: records,
 		}
 	} else {
