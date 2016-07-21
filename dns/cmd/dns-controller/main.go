@@ -29,10 +29,10 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
+	"k8s.io/contrib/dns/pkg/providers/route53"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/contrib/dns/pkg/providers/route53"
 )
 
 const (
@@ -49,7 +49,7 @@ var (
 	publishServices = flags.StringSlice("publish-service", nil,
 		`Service that we target for the DNS alias.  Typically the service for the ingress controller.`)
 
-	resyncPeriod = flags.Duration("sync-period", 30 * time.Second,
+	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
 
 	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,

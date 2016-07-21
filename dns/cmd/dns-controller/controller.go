@@ -24,6 +24,7 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/contrib/dns/pkg/providers"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -32,7 +33,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
-	"k8s.io/contrib/dns/pkg/providers"
 )
 
 var (
@@ -41,44 +41,44 @@ var (
 
 // dnsController watches the kubernetes api and adds/removes DNS entries
 type dnsController struct {
-	provider             providers.DNSProvider
+	provider        providers.DNSProvider
 	publishServices []string
 
-	client               *client.Client
-	ingController        *framework.Controller
-	svcController        *framework.Controller
-	ingLister            StoreToIngressLister
-	svcLister            cache.StoreToServiceLister
+	client        *client.Client
+	ingController *framework.Controller
+	svcController *framework.Controller
+	ingLister     StoreToIngressLister
+	svcLister     cache.StoreToServiceLister
 
-	recorder             record.EventRecorder
+	recorder record.EventRecorder
 
-	syncQueue            *taskQueue
+	syncQueue *taskQueue
 
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
 	// allowing concurrent stoppers leads to stack traces.
-	stopLock             sync.Mutex
-	shutdown             bool
-	stopCh               chan struct{}
+	stopLock sync.Mutex
+	shutdown bool
+	stopCh   chan struct{}
 }
 
 // newDNSController creates a controller for DNS
 func newDNSController(kubeClient *client.Client,
-			resyncPeriod time.Duration,
-			provider providers.DNSProvider,
-watchNamespace string,
-			publishServices []string) (*dnsController, error) {
+	resyncPeriod time.Duration,
+	provider providers.DNSProvider,
+	watchNamespace string,
+	publishServices []string) (*dnsController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(""))
 
 	lbc := dnsController{
-		provider: provider,
+		provider:        provider,
 		publishServices: publishServices,
-		client:       kubeClient,
-		stopCh:       make(chan struct{}),
-		recorder:     eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
+		client:          kubeClient,
+		stopCh:          make(chan struct{}),
+		recorder:        eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
 	}
 
 	lbc.syncQueue = NewTaskQueue(lbc.sync)
@@ -182,7 +182,7 @@ func (lbc *dnsController) buildDNSNames(data []interface{}) map[string]*provider
 	return hostnames
 }
 
-func (lbc*dnsController) findTargets() []api.LoadBalancerIngress {
+func (lbc *dnsController) findTargets() []api.LoadBalancerIngress {
 	var ingress []api.LoadBalancerIngress
 
 	for _, externalServiceName := range lbc.publishServices {
