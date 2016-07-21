@@ -11,11 +11,11 @@ ifndef VERSION
 endif
 
 #dns-controller: clean
-#	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags \
+#	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags \
 #		"-w -X main.version=${VERSION} -X main.gitRepo=${REPO_INFO}" \
 #		-o dns-controller
 dns-controller: clean
-	CGO_ENABLED=0 GOOS=linux godep go build \
+	CGO_ENABLED=0 GOOS=linux go build \
 		-ldflags "-w -X main.version=${VERSION} -X main.gitRepo=${REPO_INFO}" \
 		-o dns-controller \
 		k8s.io/contrib/dns/cmd/dns-controller
